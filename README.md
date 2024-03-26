@@ -1,1 +1,1 @@
-# Score-based-Riemannian-geometry
+# Score-based Riemannian geometry
