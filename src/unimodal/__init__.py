@@ -6,10 +6,10 @@ class Unimodal:
         self.psi = strongly_convex # StronlyConvex
     
 
-    def density(self, x):
-        return self.psi.forward(self.phi.forward(x))
+    def log_density(self, x):
+        return - self.psi.forward(self.phi.forward(x))
     
-    def score(self, x): # TODO here we can just take the autograd of density
+    def score(self, x): # TODO here we can just take the autograd of log_density
         raise NotImplementedError(
             "Subclasses should implement this"
         )
