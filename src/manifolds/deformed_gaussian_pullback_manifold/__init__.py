@@ -17,7 +17,7 @@ class DeformedGaussianPullbackManifold(Manifold): # TODO check input discrepanci
         :param x: N x d
         :return: d
         """
-        return self.dg.phi.inverse(self.manifold.barycentre(self.dg.phi(x)))
+        return self.dg.phi.inverse(self.manifold.barycentre(self.dg.phi(x))[None])[0]
 
     def inner(self, x, X, Y):
         """
@@ -27,9 +27,11 @@ class DeformedGaussianPullbackManifold(Manifold): # TODO check input discrepanci
         :param Y: N x L x d
         :return: N x M x L
         """
+        _, M, _ = X.shape
+        _, L, _ = Y.shape
         return self.manifold.inner(self.dg.forward(x),
-                                   self.dg.differential_forward(x, X),
-                                   self.dg.differential_forward(x, Y)
+                                   self.dg.differential_forward((x[:,None] * torch.ones(M)[None,:,None]).reshape(-1,self.d), X.reshape(-1,self.d)).reshape(X.shape),
+                                   self.dg.differential_forward((x[:,None] * torch.ones(L)[None,:,None]).reshape(-1,self.d), Y.reshape(-1,self.d)).reshape(Y.shape)
                                    )
     
     def geodesic(self, x, y, t):
