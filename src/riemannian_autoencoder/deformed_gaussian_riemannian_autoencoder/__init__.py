@@ -4,7 +4,6 @@ class DeformedGaussianRiemannianAutoencoder:
 
     def __init__(self, deformed_gaussian_pullback_manifold, epsilon):
         self.dgpm = deformed_gaussian_pullback_manifold
-        self.eps = epsilon
         self.d = self.dgpm.d
 
         # construct basis from the diagonal matrix A
@@ -12,18 +11,18 @@ class DeformedGaussianRiemannianAutoencoder:
         sorted_diagonal, sorted_indices = diagonal.sort()
         sorted_inv_diagonal = 1 / sorted_diagonal # largest value is first
 
-        if sorted_inv_diagonal[-1] <= self.eps * sorted_inv_diagonal.sum():
-            tmp = [sorted_inv_diagonal[i+1:].sum() <= self.eps * sorted_inv_diagonal.sum() for i in range(self.d-1)]
-            print(tmp)
-            self.d_eps = torch.arange(0,self.d-1)[tmp].min()
-            print(self.d_eps)
+        if sorted_inv_diagonal[-1] <= epsilon * sorted_inv_diagonal.sum():
+            tmp = [sorted_inv_diagonal[i+1:].sum() <= epsilon * sorted_inv_diagonal.sum() for i in range(self.d-1)]
+            self.d_eps = torch.arange(0,self.d-1)[tmp].min() + 1
+            self.eps = sorted_inv_diagonal[self.d_eps:].sum()/sorted_inv_diagonal.sum()
         else:
             self.d_eps = self.d
+            self.eps = 0.
 
         self.idx_eps = sorted_indices[:self.d_eps]
         self.basis_eps = torch.eye(self.d)[self.idx_eps] # d_eps x d
 
-        print("constructed a Riemannian autoencoder with d_eps = {self.d_eps}")
+        print(f"constructed a Riemannian autoencoder with d_eps = {self.d_eps} and eps = {self.eps}")
 
     def encode(self, x):
         """
