@@ -8,13 +8,13 @@ class DeformedGaussianRiemannianAutoencoder:
 
         # construct basis from the diagonal matrix A
         diagonal = self.dgpm.dg.psi.diagonal
-        sorted_diagonal, sorted_indices = diagonal.sort()
-        sorted_inv_diagonal = 1 / sorted_diagonal # largest value is first
+        sorted_inv_diagonal, sorted_indices = (1/diagonal).sort()
+        sorted_diagonal = 1 / sorted_inv_diagonal # largest value is first
 
-        if sorted_inv_diagonal[-1] <= epsilon * sorted_inv_diagonal.sum():
-            tmp = [sorted_inv_diagonal[i+1:].sum() <= epsilon * sorted_inv_diagonal.sum() for i in range(self.d-1)]
+        if sorted_diagonal[-1] <= epsilon * sorted_diagonal.sum():
+            tmp = [sorted_diagonal[i+1:].sum() <= epsilon * sorted_diagonal.sum() for i in range(self.d-1)]
             self.d_eps = torch.arange(0,self.d-1)[tmp].min() + 1
-            self.eps = sorted_inv_diagonal[self.d_eps:].sum()/sorted_inv_diagonal.sum()
+            self.eps = sorted_diagonal[self.d_eps:].sum()/sorted_diagonal.sum()
         else:
             self.d_eps = self.d
             self.eps = 0.

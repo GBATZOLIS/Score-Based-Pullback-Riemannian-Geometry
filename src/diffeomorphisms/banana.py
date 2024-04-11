@@ -7,7 +7,7 @@ class BananaDiffeomorphism(Diffeomorphism):
     def __init__(self, shear, offset) -> None:
         super().__init__(2)
 
-        self.a = shear # >0
+        self.a = shear # float
         self.z = offset # float
 
     def forward(self, x):
