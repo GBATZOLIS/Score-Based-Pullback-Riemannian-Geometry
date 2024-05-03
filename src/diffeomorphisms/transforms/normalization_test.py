@@ -3,9 +3,9 @@
 import torch
 import unittest
 
-from nde.transforms import base
-from nde.transforms import normalization as norm
-from nde.transforms.transform_test import TransformTest
+from src.diffeomorphisms.transforms import base
+from src.diffeomorphisms.transforms import normalization as norm
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 
 class BatchNormTest(TransformTest):

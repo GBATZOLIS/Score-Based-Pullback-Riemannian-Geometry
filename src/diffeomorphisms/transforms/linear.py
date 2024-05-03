@@ -6,9 +6,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F, init
 
-import utils
+from src.diffeomorphisms import utils
 
-from nde import transforms
+from src.diffeomorphisms import transforms
 
 
 class LinearCache(object):

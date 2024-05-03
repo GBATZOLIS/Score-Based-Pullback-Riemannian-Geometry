@@ -3,8 +3,8 @@ import unittest
 
 import utils
 
-from nde.transforms import qr
-from nde.transforms.transform_test import TransformTest
+from src.diffeomorphisms.transforms import qr
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 
 class QRLinearTest(TransformTest):

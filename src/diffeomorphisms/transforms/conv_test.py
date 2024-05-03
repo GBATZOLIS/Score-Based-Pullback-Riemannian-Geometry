@@ -1,8 +1,8 @@
 import torch
 import unittest
 
-from nde import transforms
-from nde.transforms.transform_test import TransformTest
+from src.diffeomorphisms import transforms
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 
 class OneByOneConvolutionTest(TransformTest):

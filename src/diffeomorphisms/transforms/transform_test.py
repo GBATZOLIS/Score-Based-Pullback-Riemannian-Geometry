@@ -1,7 +1,7 @@
 import torch
 import torchtestcase
 
-from nde.transforms import base
+from src.diffeomorphisms.transforms import base
 
 
 class TransformTest(torchtestcase.TorchTestCase):

@@ -1,10 +1,10 @@
 import torch
 from torch.nn import functional as F
 
-import utils
+from src.diffeomorphisms import utils
 import numpy as np
 
-from nde import transforms
+from src.diffeomorphisms import transforms
 
 DEFAULT_MIN_BIN_WIDTH = 1e-3
 DEFAULT_MIN_BIN_HEIGHT = 1e-3

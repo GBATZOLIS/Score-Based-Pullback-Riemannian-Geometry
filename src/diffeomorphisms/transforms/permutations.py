@@ -1,9 +1,9 @@
 """Implementations of permutation-like transforms."""
 
 import torch
-import utils
+from src.diffeomorphisms import utils
 
-from nde import transforms
+from src.diffeomorphisms import transforms
 
 
 class Permutation(transforms.Transform):

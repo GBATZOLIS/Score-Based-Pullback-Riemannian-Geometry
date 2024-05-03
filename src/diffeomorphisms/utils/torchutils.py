@@ -2,7 +2,7 @@
 
 import torch
 
-import utils
+from src.diffeomorphisms import utils
 
 
 def tile(x, n):

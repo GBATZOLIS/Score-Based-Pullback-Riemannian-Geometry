@@ -1,7 +1,7 @@
 import torch
 import torchtestcase
 
-from nde.transforms import splines
+from src.diffeomorphisms.transforms import splines
 
 class QuadraticSplineTest(torchtestcase.TorchTestCase):
     def test_forward_inverse_are_consistent(self):

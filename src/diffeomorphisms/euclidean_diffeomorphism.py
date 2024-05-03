@@ -2,7 +2,7 @@ import torch
 
 from src.diffeomorphisms import Diffeomorphism
 from src.diffeomorphisms import transforms
-from src.diffeomorphisms import nn as nn_
+from src.diffeomorphisms import nets as nn_
 from src.diffeomorphisms import utils
 
 from torch.autograd.functional import jvp

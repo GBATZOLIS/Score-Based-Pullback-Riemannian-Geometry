@@ -5,7 +5,7 @@ import torch
 
 from torch import nn
 
-import utils
+from src.diffeomorphisms import utils
 
 
 class InverseNotAvailable(Exception):

@@ -1,5 +1,5 @@
-import utils
-from nde import transforms
+from src.diffeomorphisms import utils
+from src.diffeomorphisms import transforms
 
 
 class OneByOneConvolution(transforms.LULinear):

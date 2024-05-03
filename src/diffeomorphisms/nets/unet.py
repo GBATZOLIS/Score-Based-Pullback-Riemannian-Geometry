@@ -3,7 +3,7 @@ import numpy as np
 from torch import nn
 from torch.nn import functional as F
 
-import utils
+from src.diffeomorphisms import utils
 
 
 class UNet(nn.Module):

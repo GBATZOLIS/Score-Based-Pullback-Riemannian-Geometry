@@ -4,9 +4,9 @@ import unittest
 import numpy as np
 import torch
 
-from nde.transforms import base
-from nde.transforms import standard
-from nde.transforms.transform_test import TransformTest
+from src.diffeomorphisms.transforms import base
+from src.diffeomorphisms.transforms import standard
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 class CompositeTransformTest(TransformTest):
 

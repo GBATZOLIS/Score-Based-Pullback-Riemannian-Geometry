@@ -4,8 +4,8 @@ import numpy as np
 import torch
 import unittest
 
-from nde.transforms import standard
-from nde.transforms.transform_test import TransformTest
+from src.diffeomorphisms.transforms import standard
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 
 class IdentityTransformTest(TransformTest):

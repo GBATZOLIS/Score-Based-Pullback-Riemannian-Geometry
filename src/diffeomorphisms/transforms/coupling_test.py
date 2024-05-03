@@ -9,8 +9,8 @@ from torch import nn
 import nn as nn_
 import utils
 
-from nde.transforms import coupling
-from nde.transforms.transform_test import TransformTest
+from src.diffeomorphisms.transforms import coupling
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 def create_coupling_transform(cls, shape, **kwargs):
     if len(shape) == 1:

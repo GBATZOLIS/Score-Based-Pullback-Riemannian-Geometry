@@ -3,9 +3,9 @@
 import torch
 import unittest
 
-import nde.transforms.splines.quadratic
-from nde.transforms import base, nonlinearities as nl, standard
-from nde.transforms.transform_test import TransformTest
+import src.diffeomorphisms.transforms.splines.quadratic
+from src.diffeomorphisms.transforms import base, nonlinearities as nl, standard
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 
 class TanhTest(TransformTest):

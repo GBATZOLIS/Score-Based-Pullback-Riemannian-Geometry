@@ -3,8 +3,8 @@
 import torch
 import unittest
 
-from nde.transforms import permutations
-from nde.transforms.transform_test import TransformTest
+from src.diffeomorphisms.transforms import permutations
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 
 class PermutationTest(TransformTest):

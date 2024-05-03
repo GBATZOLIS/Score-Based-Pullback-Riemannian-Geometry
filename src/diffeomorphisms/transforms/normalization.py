@@ -5,9 +5,9 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-import utils
+from src.diffeomorphisms import utils
 
-from nde import transforms
+from src.diffeomorphisms import transforms
 
 
 # class BatchNorm(transforms.Transform):

@@ -4,8 +4,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F, init
 
-from nde import transforms
-from nde.transforms.linear import Linear
+from src.diffeomorphisms import transforms
+from src.diffeomorphisms.transforms.linear import Linear
 
 
 class QRLinear(Linear):

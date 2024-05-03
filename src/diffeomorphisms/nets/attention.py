@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-import utils
+from src.diffeomorphisms import utils
 
 
 # # Projection of x onto y

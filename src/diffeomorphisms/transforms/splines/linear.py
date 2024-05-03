@@ -4,8 +4,8 @@ import torch
 from torch.nn import functional as F
 import numpy as np
 
-import utils
-from nde import transforms
+from src.diffeomorphisms import utils
+from src.diffeomorphisms import transforms
 
 def unconstrained_linear_spline(inputs, unnormalized_pdf,
                                 inverse=False,

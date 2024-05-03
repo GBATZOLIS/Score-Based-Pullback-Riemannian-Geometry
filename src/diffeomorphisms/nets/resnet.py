@@ -3,10 +3,10 @@ import torch
 from torch import nn
 from torch.nn import functional as F, init
 
-import utils
+from src.diffeomorphisms import utils
 
 
-class ResidualBlock(nn.Module):
+class ResidualBlock(torch.nn.Module):
     """A general-purpose residual block. Works only with 1-dim inputs."""
 
     def __init__(self,
@@ -58,7 +58,7 @@ class ResidualBlock(nn.Module):
         return inputs + temps
 
 
-class ResidualNet(nn.Module):
+class ResidualNet(torch.nn.Module):
     """A general-purpose residual network. Works only with 1-dim inputs."""
 
     def __init__(self,
@@ -101,7 +101,7 @@ class ResidualNet(nn.Module):
         return outputs
 
 
-class ConvResidualBlock(nn.Module):
+class ConvResidualBlock(torch.nn.Module):
     def __init__(self,
                  channels,
                  context_channels=None,
@@ -156,7 +156,7 @@ class ConvResidualBlock(nn.Module):
         return inputs + temps
 
 
-class ConvResidualNet(nn.Module):
+class ConvResidualNet(torch.nn.Module):
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -206,25 +206,3 @@ class ConvResidualNet(nn.Module):
             temps = block(temps, context)
         outputs = self.final_layer(temps)
         return outputs
-
-
-def main():
-    batch_size, channels, height, width = 100, 12, 64, 64
-    inputs = torch.rand(batch_size, channels, height, width)
-    context = torch.rand(batch_size, channels // 2, height, width)
-    net = ConvResidualNet(
-        in_channels=channels,
-        out_channels=2 * channels,
-        hidden_channels=32,
-        context_channels=channels // 2,
-        num_blocks=2,
-        dropout_probability=0.1,
-        use_batch_norm=True
-    )
-    print(utils.get_num_parameters(net))
-    outputs = net(inputs, context)
-    print(outputs.shape)
-
-
-if __name__ == '__main__':
-    main()

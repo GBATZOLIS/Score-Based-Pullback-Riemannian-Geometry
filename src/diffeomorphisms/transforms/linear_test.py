@@ -5,11 +5,11 @@ import unittest
 
 from unittest.mock import MagicMock
 
-import utils
+from src.diffeomorphisms import utils
 
-from nde.transforms import linear
-from nde.transforms.transform_test import TransformTest
-from nde.transforms.linear import Linear
+from src.diffeomorphisms.transforms import linear
+from src.diffeomorphisms.transforms.transform_test import TransformTest
+from src.diffeomorphisms.transforms.linear import Linear
 
 
 class LinearTest(TransformTest):

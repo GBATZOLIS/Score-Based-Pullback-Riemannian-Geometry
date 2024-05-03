@@ -4,7 +4,7 @@ import torch
 import torchtestcase
 import unittest
 
-from nde.transforms import made
+from src.diffeomorphisms.transforms import made
 
 
 class ShapeTest(torchtestcase.TorchTestCase):

@@ -4,10 +4,10 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-import utils
-from nde import transforms
-from nde.transforms import made as made_module
-from nde.transforms import splines
+from src.diffeomorphisms import utils
+from src.diffeomorphisms import transforms
+from src.diffeomorphisms.transforms import made as made_module
+from src.diffeomorphisms.transforms import splines
 
 class AutoregressiveTransform(transforms.Transform):
     """Transforms each input variable with an invertible elementwise transformation.

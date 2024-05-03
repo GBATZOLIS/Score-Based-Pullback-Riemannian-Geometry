@@ -5,10 +5,10 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-import utils
+from src.diffeomorphisms import utils
 
-from nde import transforms
-from nde.transforms import splines
+from src.diffeomorphisms import transforms
+from src.diffeomorphisms.transforms import splines
 
 
 class CouplingTransform(transforms.Transform):

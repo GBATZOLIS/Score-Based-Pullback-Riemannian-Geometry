@@ -5,8 +5,8 @@ import unittest
 
 import utils
 
-from nde.transforms import orthogonal
-from nde.transforms.transform_test import TransformTest
+from src.diffeomorphisms.transforms import orthogonal
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 
 class HouseholderSequenceTest(TransformTest):

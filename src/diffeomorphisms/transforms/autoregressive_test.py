@@ -3,8 +3,8 @@
 import torch
 import unittest
 
-from nde.transforms import autoregressive
-from nde.transforms.transform_test import TransformTest
+from src.diffeomorphisms.transforms import autoregressive
+from src.diffeomorphisms.transforms.transform_test import TransformTest
 
 
 class MaskedAffineAutoregressiveTransformTest(TransformTest):

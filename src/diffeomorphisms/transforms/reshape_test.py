@@ -1,8 +1,8 @@
 import torch
 import unittest
 
-from nde.transforms.transform_test import TransformTest
-from nde import transforms
+from src.diffeomorphisms.transforms.transform_test import TransformTest
+from src.diffeomorphisms import transforms
 
 
 class SqueezeTransformTest(TransformTest):

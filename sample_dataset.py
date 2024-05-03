@@ -5,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 import imageio
 import os 
-
+import argparse
 
 # Enable anomaly detection
 torch.autograd.set_detect_anomaly(True)
@@ -57,6 +57,12 @@ def plot_samples(samples, log_density_values, x_grid, y_grid, step):
     plt.close()
 
 def main():
+    parser = argparse.ArgumentParser(description='Run Langevin MCMC to generate samples and optional outputs.')
+    parser.add_argument('--create_gif', action='store_true', help='Create a GIF of the sampling process.')
+    parser.add_argument('--save_data', action='store_false', help='Save the last sample in the MCMC chain.')
+    parser.add_argument('--save_dir', type=str, default='./data/', help='Directory to save the data.')
+
+    args = parser.parse_args()
 
     #parameters
     shear, offset, a1, a2 = 1/9, 0., 1/4, 4
@@ -74,33 +80,51 @@ def main():
     log_density_values = unimodal.log_density(xy_grid).reshape(500, 500).detach().numpy()
     
     # Run the Langevin MCMC
-    num_samples = 2000
+    num_samples = 2500
     num_mcmc_samples = 1000
     step_size = 0.1
     initial_value = torch.zeros((num_samples, 2), requires_grad=True)  # Batch of 1
     interval_samples = langevin_mcmc(unimodal, num_mcmc_samples, step_size, initial_value)
 
-    # Determine the indices of samples to capture
-    total_samples = len(interval_samples)  # Get the total number of captured samples
-    indices = np.linspace(0, total_samples-1, 20, dtype=int)  # Calculate 20 equally spaced indices
+    if args.create_gif:
+        # Generate plots and GIF
+        filenames = []
+        indices = np.linspace(0, num_mcmc_samples-1, 20, dtype=int)
+        for idx in indices:
+            samples = interval_samples[idx].numpy()
+            plot_samples(samples, log_density_values, x_grid, y_grid, idx)
+            filenames.append(f'step_{idx}.png')
 
-    # Generate plots and GIF
-    filenames = []
-    for idx in indices:
-        samples = interval_samples[idx].numpy()
-        plot_samples(samples, log_density_values, x_grid, y_grid, idx)
-        filenames.append(f'step_{idx}.png')
+        with imageio.get_writer('langevin_mcmc.gif', mode='I', duration=0.5) as writer:
+            for filename in filenames:
+                image = imageio.imread(filename)
+                writer.append_data(image)
 
-    # Create a GIF
-    with imageio.get_writer('langevin_mcmc.gif', mode='I', duration=0.5) as writer:
         for filename in filenames:
-            image = imageio.imread(filename)
-            writer.append_data(image)
+            os.remove(filename)  # Clean up files
 
-    # Delete all intermediate files
-    for filename in filenames:
-        os.remove(filename)  # Remove the file
+    if args.save_data:
+        # Save the last sample in the MCMC chain
+        final_samples = interval_samples[-1].numpy()
 
+        # Calculate the sizes for train, validation, and test sets
+        num_samples = len(final_samples)
+        train_size = int(0.8 * num_samples)
+        val_size = int(0.1 * num_samples)
+        #test_size = num_samples - train_size - val_size
+
+        # Split the data
+        train_data = final_samples[:train_size]
+        val_data = final_samples[train_size:train_size + val_size]
+        test_data = final_samples[train_size + val_size:]
+
+        # Ensure the directory exists
+        os.makedirs(args.save_dir, exist_ok=True)
+
+        # Save the datasets as .npy files
+        np.save(os.path.join(args.save_dir, 'train.npy'), train_data)
+        np.save(os.path.join(args.save_dir, 'val.npy'), val_data)
+        np.save(os.path.join(args.save_dir, 'test.npy'), test_data)
 
 if __name__ == "__main__":
     main()
