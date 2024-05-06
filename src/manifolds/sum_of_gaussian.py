@@ -2,10 +2,10 @@ import torch
 
 from src.manifolds import Manifold
 
-class SumOfGaussian(Manifold):
+class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inner or norm squared as loss function
     """ Base class describing Euclidean space of dimension d under a sum of gaussian metric """
 
-    def __init__(self, d):
+    def __init__(self, d, strongly_convexs, weights):
         super().__init__(d)
 
     def barycentre(self, x):
@@ -40,7 +40,7 @@ class SumOfGaussian(Manifold):
         :param t: N
         :return: N x d
         """
-        # TODO solve optimisation problem
+        # TODO solve optimisation problem --> construct geodesic class from endpoints + order + data size, which is a neural network with just a linear layer, all the training data is just the times and we train the network
         raise NotImplementedError(
             "Subclasses should implement this"
         )
