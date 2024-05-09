@@ -1,6 +1,7 @@
 import torch
 
-from src.curves.boundary_value_curve import BoundaryPolynomialCurve
+from src.curves.harmonic_curves.boundary_harmonic_curve import BoundaryHarmonicCurve
+from src.curves.harmonic_curves.initial_harmonic_curve import InitialHarmonicCurve
 from src.manifolds import Manifold
 
 class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inner or norm squared as loss function
@@ -56,7 +57,7 @@ class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inne
         """
         if p is None:
             p = self.p
-        gamma = BoundaryPolynomialCurve(self.d, p, x, y)
+        gamma = BoundaryHarmonicCurve(self.d, p, x, y)
         gamma.fit(self.geodesic_loss_function)
         return gamma.forward(t)
 
@@ -72,7 +73,7 @@ class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inne
         N, _ = y.shape
         logs = torch.zeros_like(y)
         for i in range(N):
-            gamma = BoundaryPolynomialCurve(self.d, p, x, y[i])
+            gamma = BoundaryHarmonicCurve(self.d, p, x, y[i])
             gamma.fit(self.geodesic_loss_function)
             logs[i] = gamma.differential_forward(torch.zeros(1))
         return logs
@@ -86,10 +87,13 @@ class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inne
         """
         if p is None:
             p = self.p
-        # TODO solve optimisation problem
-        raise NotImplementedError(
-            "Subclasses should implement this"
-        )
+        N, _ = X.shape
+        exps = torch.zeros_like(X)
+        for i in range(N):
+            gamma = InitialHarmonicCurve(self.d, p, x, X[i])
+            gamma.fit(self.geodesic_loss_function)
+            exps[i] = gamma.forward(torch.ones(1))
+        return exps
     
     def distance(self, x, y, p=None):
         """

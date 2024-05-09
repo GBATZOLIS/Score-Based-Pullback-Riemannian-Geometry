@@ -1,7 +1,6 @@
 import torch
-import torch.nn as nn
 
-from src.curves import PolynomialCurve
+from src.curves.polynomial_curves import PolynomialCurve
 
 class BoundaryPolynomialCurve(PolynomialCurve):
     def __init__(self, d, p, start_point, end_point):

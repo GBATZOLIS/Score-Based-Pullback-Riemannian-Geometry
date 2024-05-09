@@ -39,7 +39,7 @@ class Manifold:
         return torch.sqrt(torch.abs(self.inner((x[:,None] * torch.ones((1, M, 1))).reshape(N * M, -1), 
                                                X.reshape(N * M, 1, -1), 
                                                X.reshape(N * M, 1, -1)
-                                               ).squeeze(-1,-2).reshape(N,M,-1)))
+                                               ).squeeze(-1,-2).reshape(N,M)))
 
     def geodesic(self, x, y, t):
         """
