@@ -18,7 +18,7 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
         :param x: N x d
         :return: d
         """
-        return self.dg.phi.inverse(self.manifold.barycentre(self.dg.phi(x))[None])[0]
+        return self.dsg.phi.inverse(self.manifold.barycentre(self.dsg.phi(x))[None])[0]
 
     def inner(self, x, X, Y):
         """

@@ -6,7 +6,7 @@ class Manifold:
     def __init__(self, d):
         self.d = d
 
-    def barycentre(self, x):
+    def barycentre(self, x, tol=1e-3, max_iter=50):
         """
 
         :param x: N x Mpoint

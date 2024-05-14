@@ -14,16 +14,28 @@ class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inne
         self.m = len(strongly_convexs)
         self.p = p
 
-    def barycentre(self, x): # TODO use here standard definition for barycentre through solving minimisation problem
+    def barycentre(self, x, tol=1e-3, max_iter=50, step_size=1.): # TODO use here standard definition for barycentre through solving minimisation problem
         """
 
         :param x: N x d
         :return: d
         """
-        # TODO this will be very hard to compute... Can use CPPA paper perhaps?
-        raise NotImplementedError(
-            "Subclasses should implement this"
-        )
+        k = 0
+        y = torch.mean(x,0)
+        
+        gradient_0 = torch.mean(self.log(y, x),0)
+        error = self.norm(y[None], gradient_0[None,None])
+        rel_error = 1.
+        while k <= max_iter and rel_error >= tol:
+            gradient = torch.mean(self.log(y, x),0)
+            y = y + step_size * gradient
+            k+=1
+            rel_error = self.norm(y[None], gradient[None,None]) / error
+            print(f"iteration {k} | rel_error = {rel_error.item()}")
+
+        print(f"gradient descent was terminated after reaching a relative error {rel_error.item()} in {k} iterations")
+
+        return y
 
     def inner(self, x, X, Y):
         """
@@ -59,7 +71,7 @@ class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inne
             p = self.p
         gamma = BoundaryHarmonicCurve(self.d, p, x, y)
         gamma.fit(self.geodesic_loss_function)
-        return gamma.forward(t)
+        return gamma.forward(t).detach()
 
     def log(self, x, y, p=None):
         """
@@ -76,7 +88,7 @@ class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inne
             gamma = BoundaryHarmonicCurve(self.d, p, x, y[i])
             gamma.fit(self.geodesic_loss_function)
             logs[i] = gamma.differential_forward(torch.zeros(1))
-        return logs
+        return logs.detach()
 
     def exp(self, x, X, p=None):
         """
@@ -93,7 +105,7 @@ class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inne
             gamma = InitialHarmonicCurve(self.d, p, x, X[i])
             gamma.fit(self.geodesic_loss_function)
             exps[i] = gamma.forward(torch.ones(1))
-        return exps
+        return exps.detach()
     
     def distance(self, x, y, p=None):
         """

@@ -49,8 +49,8 @@ class Curve(nn.Module): # TODO evaluation function without grad
             loss.backward()
             optimizer.step()
             
-            if epoch % 100 == 0:
-                squared_distance = torch.mean(torch.sqrt(losses)) ** 2
-                print(f"Epoch {epoch}, Loss {loss.item()} | Validation: {loss.item() - squared_distance.item()}")
+            # if epoch % 100 == 0:
+            #     squared_distance = torch.mean(torch.sqrt(losses)) ** 2
+            #     print(f"Epoch {epoch}, Loss {loss.item()} | Validation: {loss.item() - squared_distance.item()}")
                 # plt.plot(t, loss_function(gamma_t, dot_gamma_t).detach().numpy())
                 # plt.show()
