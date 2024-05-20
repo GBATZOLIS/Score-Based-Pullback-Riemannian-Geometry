@@ -34,3 +34,12 @@ class InitialHarmonicCurve(HarmonicCurve):
         result = fixed_contribution + coefficient_contribution
         
         return result
+    
+    def double_differential_forward(self, t): 
+        sines = - (torch.arange(1, self.p+1)[None] * torch.pi) ** 2 * torch.sin(torch.arange(1, self.p+1)[None] * torch.pi * t[:,None]) 
+        
+        coefficient_contribution = torch.einsum("pd,Np->Nd", self.coefficients, sines)
+        
+        result = coefficient_contribution
+        
+        return result

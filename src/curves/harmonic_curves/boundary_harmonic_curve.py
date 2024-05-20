@@ -25,12 +25,21 @@ class BoundaryHarmonicCurve(HarmonicCurve): # TODO
         
         return result
     
-    def differential_forward(self, t): # TODO
+    def differential_forward(self, t):
         cosines = torch.arange(1, self.p+1)[None] * torch.pi * torch.cos(torch.arange(1, self.p+1)[None] * torch.pi * t[:,None]) 
         
         fixed_contribution = self.y[None] - self.x[None]
         coefficient_contribution = torch.einsum("pd,Np->Nd", self.coefficients, cosines)
         
         result = fixed_contribution + coefficient_contribution
+        
+        return result
+    
+    def double_differential_forward(self, t): 
+        sines = - (torch.arange(1, self.p+1)[None] * torch.pi) ** 2 * torch.sin(torch.arange(1, self.p+1)[None] * torch.pi * t[:,None]) 
+        
+        coefficient_contribution = torch.einsum("pd,Np->Nd", self.coefficients, sines)
+        
+        result = coefficient_contribution
         
         return result
