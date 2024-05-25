@@ -1,8 +1,12 @@
 # Ignore all .pyc files
 *.pyc
 
-# Ignore everything in the data directory
-data/
+# Ignore the data directory in the root directory
+/data/
 
-#Ignore everything in the results folder
+# Allow tracking of data directories in subdirectories
+!*/data/
+
+# Ignore everything in the results folder
 results/
+
