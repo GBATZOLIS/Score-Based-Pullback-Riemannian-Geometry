@@ -49,7 +49,7 @@ def get_base_transform_fn(args):
     
     return create_base_transform
         
-class EuclideanDiffeomorphism(Diffeomorphism):
+class euclidean_diffeomorphism(Diffeomorphism):
 
     def __init__(self, args) -> None:
         super().__init__(args.d)
