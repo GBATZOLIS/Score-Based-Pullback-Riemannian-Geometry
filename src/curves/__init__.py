@@ -63,5 +63,5 @@ class Curve(nn.Module): # TODO evaluation function without grad
             #     squared_distance = torch.mean(torch.sqrt(losses)) ** 2
                 print(f"Epoch {epoch}, Loss {loss.item()}")
                 # print(f"Epoch {epoch}, Loss {loss.item()} | Validation: {loss.item() - squared_distance.item()}")
-                plt.plot(t, loss_function(gamma_t, dot_gamma_t, dot_dot_gamma_t).detach().numpy())
-                plt.show()
+                # plt.plot(t, loss_function(gamma_t, dot_gamma_t, dot_dot_gamma_t).detach().numpy())
+                # plt.show()

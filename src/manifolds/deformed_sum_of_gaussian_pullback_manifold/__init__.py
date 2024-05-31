@@ -61,17 +61,17 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
                                                 self.manifold.log(self.dsg.phi.forward(x[None])[0], self.dsg.phi.forward(y), p=p)
                                                 )
 
-    def exp(self, x, X, p=None):
+    def exp(self, x, X, T=100):
         """
 
         :param x: d
         :param X: N x d
         :return: N x d
         """
-        if p is None:
-            p = self.p
+        # if p is None:
+        #     p = self.p
         N, _ = X.shape
-        return self.dsg.phi.inverse(self.manifold.exp(self.dsg.phi.forward(x[None])[0], self.dsg.phi.differential_forward(x[None] * torch.ones(N)[:,None], X), p=p))
+        return self.dsg.phi.inverse(self.manifold.exp(self.dsg.phi.forward(x[None])[0], self.dsg.phi.differential_forward(x[None] * torch.ones(N)[:,None], X), T=T))
     
     def distance(self, x, y, p=None):
         """

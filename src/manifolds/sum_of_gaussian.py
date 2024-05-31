@@ -111,22 +111,40 @@ class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inne
             logs[i] = gamma.differential_forward(torch.zeros(1))
         return logs.detach()
 
-    def exp(self, x, X, p=None):
+    def exp(self, x, X, T=100):
         """
 
         :param x: d
         :param X: N x d
         :return: N x d
         """
-        if p is None:
-            p = self.p
+        # if p is None:
+        #     p = self.p
         N, _ = X.shape
-        exps = torch.zeros_like(X)
-        for i in range(N):
-            gamma = InitialHarmonicCurve(self.d, p, x, X[i])
-            gamma.fit(self.exponential_loss_function)
-            exps[i] = gamma.forward(torch.ones(1))
-        return exps.detach()
+        exps = x[None] * torch.ones(N)[:,None]
+        iterates = [x[None]]
+        dot_exps = X
+        for t in range(T):
+            tmps = exps
+            exps += 1/T * dot_exps
+            
+            dot_exps -= 1/T + self.christoffel_operator(tmps,dot_exps,dot_exps)
+            if t % 10 == 0:
+                print(f"t = {t}")
+                print(exps)
+                print(dot_exps)
+                iterates.append(exps)
+
+        # for i in range(N):
+        #     gamma = InitialHarmonicCurve(self.d, p, x, X[i])
+        #     gamma.fit(self.exponential_loss_function)
+        #     exps[i] = gamma.forward(torch.ones(1))
+        # return exps.detach()
+        iter_tensor = torch.cat(iterates)
+        print(iter_tensor)
+        plt.scatter(iter_tensor[:,0], iter_tensor[:,1])
+        plt.show()
+        return exps
     
     def distance(self, x, y, p=None):
         """
@@ -177,8 +195,11 @@ class SumOfGaussian(Manifold): # TODO get the curve classes in here and use inne
         inner_x, inner_i_x = self.inner(x, X[:,None], Y[:,None], return_inners=True)
 
         term_1 = torch.einsum("Nmi,Ni->Nm",grad_psi_i_x, Y)[:,:,None] * (X[:,None] - sharp_m_x * flat_i * X[:,None])
+        # print(f"term 1 = {term_1}")
         term_2 = torch.einsum("Nmi,Ni->Nm",grad_psi_i_x, X)[:,:,None] * (Y[:,None] - sharp_m_x * flat_i * Y[:,None])
+        # print(f"term 2 = {term_2}")
         term_3 = (inner_x[:,0,0,None] - inner_i_x[:,0,0,:])[:,:,None] * sharp_m_x * grad_psi_i_x
+        # print(f"term 3 = {term_3}")
 
         return 1/2 * torch.sum(prefactors_i_x[:,:,None] * (term_1 + term_2 - term_3),1)
     
