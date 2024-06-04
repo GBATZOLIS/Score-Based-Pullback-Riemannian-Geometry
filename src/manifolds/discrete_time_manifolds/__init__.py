@@ -63,15 +63,17 @@ class DiscreteTimeManifold(Manifold):
         :return: N x d x d x d x d
         """
         def sum_christoffel_symbol(y):
-            return torch.sum(self.christoffel_symbol(y),0)
+            return torch.sum(self.christoffel_symbols(y),0)
         
-        christoffel_symbol_gradient = torch.autograd.functional.jacobian(sum_christoffel_symbol, x).permute((3,4,0,1,2))
-        christoffel_symbol_product = torch.einsum("Naed,Nbce->Nabcd")
+        christoffel_symbol_gradient_x = torch.autograd.functional.jacobian(sum_christoffel_symbol, x).permute((3,4,0,1,2))
+        christoffel_symbols_x = self.christoffel_symbols(x)
+        christoffel_symbol_product_x = torch.einsum("Naed,Nbce->Nabcd", christoffel_symbols_x, christoffel_symbols_x)
 
-        term_1 = christoffel_symbol_gradient
-        term_2 = christoffel_symbol_gradient.permute(0,2,1,3,4)
-        term_3 = christoffel_symbol_product
-        term_4 = christoffel_symbol_product.permute(0,2,1,3,4)
+        term_1 = christoffel_symbol_gradient_x
+        term_2 = christoffel_symbol_gradient_x.permute(0,2,1,3,4)
+        term_3 = christoffel_symbol_product_x
+        term_4 = christoffel_symbol_product_x.permute(0,2,1,3,4)
+
         return term_1 - term_2 + term_3 - term_4
     
     def ricci_tensor(self,x):
@@ -81,6 +83,7 @@ class DiscreteTimeManifold(Manifold):
         :return: N x d x d 
         """
         curvature_tensor_x = self.curvature_tensor(x)
+        print(f"curvature tensor shape {curvature_tensor_x.shape}")
         return torch.einsum("Ncacb->Nab", curvature_tensor_x)
     
     def ricci_scalar(self,x):
@@ -90,6 +93,7 @@ class DiscreteTimeManifold(Manifold):
         :return: N 
         """
         ricci_tensor_x = self.ricci_tensor(x)
+        print(f"ricci tensor shape {ricci_tensor_x.shape}")
         return torch.einsum("Naa->N", ricci_tensor_x)
 
     def barycentre(self, x, tol=1e-2, max_iter=50, step_size=1/4): # TODO allow to recycle discrete geodesics

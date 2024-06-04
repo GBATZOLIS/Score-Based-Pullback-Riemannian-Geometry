@@ -11,6 +11,14 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
         self.dsg = deformed_sum_of_gaussian # multimodal distribution
         self.manifold = SumOfDiagonal(self.d, deformed_sum_of_gaussian.psi, deformed_sum_of_gaussian.weights)
 
+    def ricci_scalar(self, x):
+        """
+        R
+        :param x: N x d
+        :return: N 
+        """
+        return self.manifold.ricci_scalar(self.dsg.phi(x))
+
     def barycentre(self, x):
         """
 
