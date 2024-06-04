@@ -1,5 +1,5 @@
 from src.manifolds import Manifold
-from src.manifolds.discrete_time_manifolds.sum_of_gaussian.v1 import SumOfGaussianV1
+from src.manifolds.discrete_time_manifolds.sum_of_gaussian.sum_of_diagonal import SumOfDiagonal
 
 import torch
 
@@ -9,7 +9,7 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
     def __init__(self, deformed_sum_of_gaussian):
         super().__init__(deformed_sum_of_gaussian.d)
         self.dsg = deformed_sum_of_gaussian # multimodal distribution
-        self.manifold = SumOfGaussianV1(self.d, deformed_sum_of_gaussian.psi, deformed_sum_of_gaussian.weights)
+        self.manifold = SumOfDiagonal(self.d, deformed_sum_of_gaussian.psi, deformed_sum_of_gaussian.weights)
 
     def barycentre(self, x):
         """
@@ -34,7 +34,7 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
                                    self.dsg.phi.differential_forward((x[:,None] * torch.ones(L)[None,:,None]).reshape(-1,self.d), Y.reshape(-1,self.d)).reshape(Y.shape)
                                    )
     
-    def geodesic(self, x, y, t, p=None):
+    def geodesic(self, x, y, t, L=100, tol=1e-2, max_iter=20000, step_size=1/8):
         """
 
         :param x: d
@@ -42,9 +42,9 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
         :param t: N
         :return: N x d
         """
-        return self.dsg.phi.inverse(self.manifold.geodesic(self.dsg.phi.forward(x[None])[0], self.dsg.phi.forward(y[None])[0], t))
+        return self.dsg.phi.inverse(self.manifold.geodesic(self.dsg.phi.forward(x[None])[0], self.dsg.phi.forward(y[None])[0], t, L=L, tol=tol, max_iter=max_iter, step_size=step_size))
 
-    def log(self, x, y):
+    def log(self, x, y, L=100, tol=1e-2, max_iter=20000, step_size=1/8):
         """
 
         :param x: d
@@ -53,10 +53,10 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
         """
         N, _ = y.shape
         return self.dsg.phi.differential_inverse(self.dsg.phi.forward(x[None]) * torch.ones(N)[:,None],
-                                                self.manifold.log(self.dsg.phi.forward(x[None])[0], self.dsg.phi.forward(y))
+                                                self.manifold.log(self.dsg.phi.forward(x[None])[0], self.dsg.phi.forward(y), L=L, tol=tol, max_iter=max_iter, step_size=step_size)
                                                 )
 
-    def exp(self, x, X, L=100):
+    def exp(self, x, X, L=100, tol=1e-2, max_iter=20000):
         """
 
         :param x: d
@@ -66,18 +66,18 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
         # if p is None:
         #     p = self.p
         N, _ = X.shape
-        return self.dsg.phi.inverse(self.manifold.exp(self.dsg.phi.forward(x[None])[0], self.dsg.phi.differential_forward(x[None] * torch.ones(N)[:,None], X), L=L))
+        return self.dsg.phi.inverse(self.manifold.exp(self.dsg.phi.forward(x[None])[0], self.dsg.phi.differential_forward(x[None] * torch.ones(N)[:,None], X), L=L, tol=tol, max_iter=max_iter))
     
-    def distance(self, x, y):
+    def distance(self, x, y, L=100, tol=1e-2, max_iter=20000, step_size=1/8):
         """
 
         :param x: N x M x d
         :param y: N x L x d
         :return: N x M x L
         """
-        return self.manifold.distance(self.dsg.forward(x.reshape(-1,self.d)).reshape(x.shape), self.dsg.forward(y.reshape(-1,self.d)).reshape(y.shape))
+        return self.manifold.distance(self.dsg.forward(x.reshape(-1,self.d)).reshape(x.shape), self.dsg.forward(y.reshape(-1,self.d)).reshape(y.shape), L=L, tol=tol, max_iter=max_iter, step_size=step_size)
 
-    def parallel_transport(self, x, X, y):
+    def parallel_transport(self, x, X, y, L=100, tol=1e-2, max_iter=20000, step_size=1/8):
         """
 
         :param x: d
@@ -90,5 +90,5 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
                                                 self.manifold.parallel_transport(self.dsg.phi.forward(x[None])[0],
                                                                                  self.dsg.phi.differential_forward(x[None] * torch.ones(N)[:,None], X),
                                                                                  self.dsg.phi.forward(y[None])[0]
-                                                                                 )
+                                                                                 ), L=L, tol=tol, max_iter=max_iter, step_size=step_size
                                                 )
