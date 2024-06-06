@@ -84,7 +84,7 @@ class DiscreteTimeManifold(Manifold):
         """
         curvature_tensor_x = self.curvature_tensor(x)
         print(f"curvature tensor shape {curvature_tensor_x.shape}")
-        return torch.einsum("Ncacb->Nab", curvature_tensor_x)
+        return torch.einsum("Ncabc->Nab", curvature_tensor_x)
     
     def ricci_scalar(self,x):
         """
