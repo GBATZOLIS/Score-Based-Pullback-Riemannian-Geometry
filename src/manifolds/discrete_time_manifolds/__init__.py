@@ -83,7 +83,6 @@ class DiscreteTimeManifold(Manifold):
         :return: N x d x d 
         """
         curvature_tensor_x = self.curvature_tensor(x)
-        print(f"curvature tensor shape {curvature_tensor_x.shape}")
         return torch.einsum("Ncabc->Nab", curvature_tensor_x)
     
     def ricci_scalar(self,x):
@@ -93,7 +92,6 @@ class DiscreteTimeManifold(Manifold):
         :return: N 
         """
         ricci_tensor_x = self.ricci_tensor(x)
-        print(f"ricci tensor shape {ricci_tensor_x.shape}")
         return torch.einsum("Naa->N", ricci_tensor_x)
 
     def barycentre(self, x, tol=1e-2, max_iter=50, step_size=1/4): # TODO allow to recycle discrete geodesics
