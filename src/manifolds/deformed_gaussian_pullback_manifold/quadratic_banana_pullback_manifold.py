@@ -1,7 +1,7 @@
 import torch
 
 from src.manifolds.deformed_gaussian_pullback_manifold import DeformedGaussianPullbackManifold
-from src.unimodal.deformed_gaussian.quadratic_banana import QuadraticBanana
+from unimodal.deformed_gaussian.quadratic_banana import QuadraticBanana
 
 class QuadraticBananaPullbackManifold(DeformedGaussianPullbackManifold):
 

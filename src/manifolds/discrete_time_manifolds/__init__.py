@@ -212,7 +212,7 @@ class DiscreteTimeManifold(Manifold):
             if k == 0:
                 validation_0 = validation.clone().max()
 
-            if validation.max() / validation_0 < tol:
+            if validation.max() / (validation_0 + 1e-8) < tol:
                 break
 
             # compute Riemannian gradients
@@ -227,7 +227,7 @@ class DiscreteTimeManifold(Manifold):
             Z.grad.zero_()  # Zero gradients manually
             
             if k % 1000 == 0: # geodesic discrepancy loss
-                print(f"Epoch {k}, Loss {loss.item()} | Validation: {(validation.max().item())/ validation_0.item()}")
+                print(f"Epoch {k}, Loss {loss.item()} | Validation: {(validation.max().item())/ (validation_0.item() + 1e-8)}")
 
             k += 1
 
