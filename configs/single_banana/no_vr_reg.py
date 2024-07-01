@@ -7,9 +7,9 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     # Logging settings
-    config.base_log_dir = "./results"
-    config.experiment = "single_banana"
-    config.eval_log_frequency = 200
+    config.base_log_dir = "./results/single_banana"
+    config.experiment = "no_vr_reg"
+    config.eval_log_frequency = 100
 
     # Model settings
     config.diffeomorphism_class = 'euclidean_diffeomorphism'
@@ -24,17 +24,19 @@ def get_config():
     config.num_flow_steps = 2
 
     # Training settings
-    config.epochs = 10000
+    config.epochs = 2000
     config.checkpoint_frequency = 1
     config.std = 1e-1
-    config.use_reg = False
+    config.use_reg = True
     config.reg_factor = 1.0
+    config.use_cv = False
 
     # Data settings
     config.dataset_class = 'numpy_dataset'
+    config.dataset = 'single_banana'
     config.data_path = "./data"
     config.d = 2
-    config.batch_size = 32
+    config.batch_size = 64
 
     # Device settings
     config.device = "cuda" if torch.cuda.is_available() else "cpu"

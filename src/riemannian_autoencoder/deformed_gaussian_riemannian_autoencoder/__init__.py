@@ -1,26 +1,26 @@
 import torch
 
 class DeformedGaussianRiemannianAutoencoder:
-
     def __init__(self, deformed_gaussian_pullback_manifold, epsilon):
         self.dgpm = deformed_gaussian_pullback_manifold
         self.d = self.dgpm.d
+        device = self.dgpm.dg.psi.diagonal.device
 
         # construct basis from the diagonal matrix A
         diagonal = self.dgpm.dg.psi.diagonal
         sorted_inv_diagonal, sorted_indices = (1/diagonal).sort()
-        sorted_diagonal = 1 / sorted_inv_diagonal # largest value is first
+        sorted_diagonal = 1 / sorted_inv_diagonal  # largest value is first
 
         if sorted_diagonal[-1] <= epsilon * sorted_diagonal.sum():
             tmp = [sorted_diagonal[i+1:].sum() <= epsilon * sorted_diagonal.sum() for i in range(self.d-1)]
-            self.d_eps = torch.arange(0,self.d-1)[tmp].min() + 1
+            self.d_eps = torch.arange(0, self.d-1, device=device)[tmp].min() + 1
             self.eps = sorted_diagonal[self.d_eps:].sum()/sorted_diagonal.sum()
         else:
             self.d_eps = self.d
             self.eps = 0.
 
         self.idx_eps = sorted_indices[:self.d_eps]
-        self.basis_eps = torch.eye(self.d)[self.idx_eps] # d_eps x d
+        self.basis_eps = torch.eye(self.d, device=device)[self.idx_eps]  # d_eps x d
 
         print(f"constructed a Riemannian autoencoder with d_eps = {self.d_eps} and eps = {self.eps}")
 
@@ -29,7 +29,7 @@ class DeformedGaussianRiemannianAutoencoder:
         :param x: N x d tensor
         :return : N x d_eps tensor
         """
-        return self.dgpm.dg.phi.forward(x)[:,self.idx_eps]
+        return self.dgpm.dg.phi.forward(x)[:, self.idx_eps]
 
     def decode(self, p):
         """

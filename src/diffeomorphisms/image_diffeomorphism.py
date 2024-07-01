@@ -216,15 +216,16 @@ class image_diffeomorphism(core_image_diffeomorphism):
         def wrapper(self, *args):
             # Check if the input tensors are flattened
             input_was_flattened = [arg.dim() == 2 for arg in args]
-            # Unflatten if necessary
-            unflattened_args = [self.unflatten_image(arg) if is_flattened else arg for arg, is_flattened in zip(args, input_was_flattened)]
+            device = args[0].device
+            # Unflatten if necessary and move to the same device
+            unflattened_args = [self.unflatten_image(arg.to(device)) if is_flattened else arg.to(device) for arg, is_flattened in zip(args, input_was_flattened)]
             # Call the original method
             result = func(self, *unflattened_args)
             # Flatten the output tensor if the inputs were flattened
             if isinstance(result, tuple):
-                result = tuple(self.flatten_image(res) if is_flattened else res for res, is_flattened in zip(result, input_was_flattened))
+                result = tuple(self.flatten_image(res.to(device)) if is_flattened else res.to(device) for res, is_flattened in zip(result, input_was_flattened))
             else:
-                result = self.flatten_image(result) if any(input_was_flattened) else result
+                result = self.flatten_image(result.to(device)) if any(input_was_flattened) else result.to(device)
             return result
         return wrapper
 

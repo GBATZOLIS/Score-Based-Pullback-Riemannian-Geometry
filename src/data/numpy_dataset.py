@@ -10,7 +10,7 @@ class numpy_dataset(Dataset):
             file_path (str): Path to the .npy file containing the data.
         """
         # Load the data from the .npy file
-        self.data = np.load(os.path.join(args.data_path, args.experiment, split + '.npy'))
+        self.data = np.load(os.path.join(args.data_path, args.dataset, split + '.npy'))
 
         # Convert the data to a torch tensor
         self.data = torch.from_numpy(self.data).float()  # Convert to float for consistency in most PyTorch models

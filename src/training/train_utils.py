@@ -1,7 +1,6 @@
 import torch
 import os 
 
-
 class EMA:
     """
     Exponential Moving Average (EMA) for maintaining a moving average of model weights.
@@ -42,7 +41,7 @@ class EMA:
         # Initialize the shadow variables with model parameters
         for name, param in model.named_parameters():
             if param.requires_grad:
-                self.shadow[name] = param.data.clone()
+                self.shadow[name] = param.data.clone().to(param.data.device)
 
     def update(self):
         """
@@ -52,8 +51,7 @@ class EMA:
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 assert name in self.shadow
-                new_average = (1.0 - self.decay) * param.data + self.decay * self.shadow[name]
-                self.shadow[name] = new_average.clone()
+                self.shadow[name].data = (1.0 - self.decay) * param.data + self.decay * self.shadow[name].data
 
     def apply_shadow(self):
         """
@@ -62,8 +60,8 @@ class EMA:
         """
         for name, param in self.model.named_parameters():
             if param.requires_grad:
-                self.backup[name] = param.data
-                param.data = self.shadow[name]
+                self.backup[name] = param.data.clone()
+                param.data = self.shadow[name].data.clone()
 
     def restore(self):
         """
@@ -73,7 +71,7 @@ class EMA:
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 assert name in self.backup
-                param.data = self.backup[name]
+                param.data = self.backup[name].clone()
         self.backup = {}
 
 

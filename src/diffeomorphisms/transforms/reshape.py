@@ -1,8 +1,6 @@
 import torch
-
 from src.diffeomorphisms import utils
 from src.diffeomorphisms import transforms
-
 
 class SqueezeTransform(transforms.Transform):
     """A transformation defined for image data that trades spatial dimensions for channel
@@ -32,23 +30,23 @@ class SqueezeTransform(transforms.Transform):
             raise ValueError('Expecting inputs with 4 dimensions')
 
         batch_size, c, h, w = inputs.size()
+        device = inputs.device
 
         if h % self.factor != 0 or w % self.factor != 0:
             raise ValueError('Input image size not compatible with the factor.')
 
-        inputs = inputs.view(batch_size, c, h // self.factor, self.factor, w // self.factor,
-                             self.factor)
+        inputs = inputs.view(batch_size, c, h // self.factor, self.factor, w // self.factor, self.factor)
         inputs = inputs.permute(0, 1, 3, 5, 2, 4).contiguous()
-        inputs = inputs.view(batch_size, c * self.factor * self.factor, h // self.factor,
-                             w // self.factor)
+        inputs = inputs.view(batch_size, c * self.factor * self.factor, h // self.factor, w // self.factor)
 
-        return inputs, torch.zeros(batch_size)
+        return inputs, torch.zeros(batch_size, device=device)
 
     def inverse(self, inputs, context=None):
         if inputs.dim() != 4:
             raise ValueError('Expecting inputs with 4 dimensions')
 
         batch_size, c, h, w = inputs.size()
+        device = inputs.device
 
         if c < 4 or c % 4 != 0:
             raise ValueError('Invalid number of channel dimensions.')
@@ -57,7 +55,7 @@ class SqueezeTransform(transforms.Transform):
         inputs = inputs.permute(0, 1, 4, 2, 5, 3).contiguous()
         inputs = inputs.view(batch_size, c // self.factor ** 2, h * self.factor, w * self.factor)
 
-        return inputs, torch.zeros(batch_size)
+        return inputs, torch.zeros(batch_size, device=device)
 
 class ReshapeTransform(transforms.Transform):
     def __init__(self, input_shape, output_shape):
@@ -66,13 +64,15 @@ class ReshapeTransform(transforms.Transform):
         self.output_shape = output_shape
 
     def forward(self, inputs, context=None):
+        device = inputs.device
         if tuple(inputs.shape[1:]) != self.input_shape:
             raise RuntimeError('Unexpected inputs shape ({}, but expecting {})'
                                .format(tuple(inputs.shape[1:]), self.input_shape))
-        return inputs.reshape(-1, *self.output_shape), torch.zeros(inputs.shape[0])
+        return inputs.reshape(-1, *self.output_shape), torch.zeros(inputs.shape[0], device=device)
 
     def inverse(self, inputs, context=None):
+        device = inputs.device
         if tuple(inputs.shape[1:]) != self.output_shape:
             raise RuntimeError('Unexpected inputs shape ({}, but expecting {})'
                                .format(tuple(inputs.shape[1:]), self.output_shape))
-        return inputs.reshape(-1, *self.input_shape), torch.zeros(inputs.shape[0])
+        return inputs.reshape(-1, *self.input_shape), torch.zeros(inputs.shape[0], device=device)
