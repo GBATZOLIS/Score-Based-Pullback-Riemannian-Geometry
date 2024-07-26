@@ -18,9 +18,7 @@ class QuadraticDiagonal(StronglyConvex): # TODO
         :param x: N x d
         :return: N
         """
-        result = 0.5 * torch.sum(1 / self.diagonal[None] * (x - self.offset[None]) **2, 1)
-        #print("QuadraticDiagonal.forward - result.requires_grad:", result.requires_grad)
-        return result
+        return 0.5 * torch.sum(1 / self.diagonal[None] * (x - self.offset[None]) **2, 1)
     
     def grad_forward(self, x):
         """
