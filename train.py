@@ -82,11 +82,11 @@ def main(config_path):
     best_checkpoints = []
 
     # Get the appropriate loss function
-    loss_fn = get_loss_function(config.get('loss', 'denoising score matching'), config.std)
+    loss_fn = get_loss_function(config)
 
-    phi.eval()
-    psi.eval()
-    check_manifold_properties(config.dataset, phi, psi, writer, 0, device, val_loader)
+    #phi.eval()
+    #psi.eval()
+    #check_manifold_properties(config.dataset, phi, psi, writer, 0, device, val_loader)
 
     # Training and Validation loop
     for epoch in range(config.epochs):
@@ -105,7 +105,7 @@ def main(config_path):
 
             x = x.to(device)
             
-            loss, density_learning_loss, reg_loss = loss_fn(phi, psi, x, train=True, use_cv=config.use_cv, use_reg=config.use_reg, reg_factor=config.reg_factor, device=device)
+            loss, density_learning_loss, reg_loss = loss_fn(phi, psi, x, train=True, device=device)
 
             optimizer.zero_grad()
             loss.backward()
@@ -163,7 +163,7 @@ def main(config_path):
 
                 x = x.to(device)
 
-                val_loss, val_density_learning_loss, val_reg_loss = loss_fn(phi, psi, x, train=False, use_cv=config.use_cv, use_reg=config.use_reg, reg_factor=config.reg_factor, device=device)
+                val_loss, val_density_learning_loss, val_reg_loss = loss_fn(phi, psi, x, train=False, device=device)
 
                 total_val_loss += val_loss.item()
                 total_val_density_learning_loss += val_density_learning_loss.item()

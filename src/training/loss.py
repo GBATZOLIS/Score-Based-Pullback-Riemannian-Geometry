@@ -3,28 +3,36 @@ import numpy as np
 from src.training.train_utils import get_score_fn, get_log_density_fn
 import torch.autograd as autograd
 
-def get_loss_function(loss_type, args_std):
-    return LossFunctionWrapper(loss_type, args_std)
+def get_loss_function(config):
+    return LossFunctionWrapper(config)
 
 class LossFunctionWrapper:
-    def __init__(self, loss_type, args_std):
-        self.loss_type = loss_type
-        self.args_std = args_std
-        if loss_type == 'loglikelihood':
+    def __init__(self, config):
+        self.loss_type = config.get('loss', 'denoising score matching')
+        self.args_std = config.get('std', 0.1)
+        self.use_cv = config.get('use_cv', False)
+        self.use_reg = config.get('use_reg', False)
+        self.reg_factor = config.get('reg_factor', 1)
+        self.reg_type = config.get('reg_type', 'volume')
+        self.mcmc_steps = config.get('mcmc_steps', 20)
+        self.epsilon = config.get('epsilon', 0.1)
+
+        if self.loss_type == 'loglikelihood':
             self.loss_fn = loglikelihood_maximisation
             self.loss_name = "Loss/Log Likelihood"
-        elif loss_type == 'denoising score matching':
+        elif self.loss_type == 'denoising score matching':
             self.loss_fn = compute_loss_variance_reduction
             self.loss_name = "Loss/Score"
         else:
-            raise ValueError(f"Unknown loss type: {loss_type}")
+            raise ValueError(f"Unknown loss type: {self.loss_type}")
         self.reg_loss_name = "Loss/Regularization"
 
-    def __call__(self, phi, psi, x, train=True, use_cv=False, use_reg=False, reg_factor=1, mcmc_steps=20, epsilon=0.1, device='cuda:0'):
+    def __call__(self, phi, psi, x, train, device):
         if self.loss_type == 'loglikelihood':
-            return self.loss_fn(phi, psi, x, self.args_std, train, use_reg, reg_factor, mcmc_steps, epsilon, device)
+            return self.loss_fn(phi, psi, x, self.args_std, train, self.use_reg, self.reg_factor, self.mcmc_steps, self.epsilon, device)
         elif self.loss_type == 'denoising score matching':
-            return self.loss_fn(phi, psi, x, self.args_std, train, use_cv, use_reg, reg_factor, device)
+            return self.loss_fn(phi, psi, x, self.args_std, train, self.use_cv, self.use_reg, self.reg_factor, self.reg_type, device)
+
 
 
 def volume_regularisation(logabsdetjac):
@@ -129,7 +137,7 @@ def loglikelihood_maximisation(phi, psi, x, args_std, train=True, use_reg=False,
     
     return loss, density_learning_loss, reg_loss
 
-def compute_loss_variance_reduction(phi, psi, x, args_std, train=True, use_cv=False, use_reg=False, reg_factor=1, device='cuda:0'):
+def compute_loss_variance_reduction(phi, psi, x, args_std, train=True, use_cv=False, use_reg=False, reg_factor=1, reg_type='volume', device='cuda:0'):
     def score_matching_loss():
         x.requires_grad_(True)  # Ensure x requires gradients
         batch_size = x.size(0)
@@ -151,7 +159,7 @@ def compute_loss_variance_reduction(phi, psi, x, args_std, train=True, use_cv=Fa
         return loss
 
     density_learning_loss = score_matching_loss()
-    reg_loss = regularisation_term('volume', phi, x, train, device) if use_reg else torch.tensor(0.0, device=device) #use_reg or not train 
+    reg_loss = regularisation_term(reg_type, phi, x, train, device) if use_reg else torch.tensor(0.0, device=device) #use_reg or not train 
 
     loss = density_learning_loss + (reg_factor * reg_loss if use_reg else torch.tensor(0.0, device=device))
     

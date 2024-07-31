@@ -42,6 +42,8 @@ def get_base_transform_fn(args):
                     use_batch_norm=args.use_batch_norm
                 ),
                 num_bins=args.num_bins,
+                tails = 'linear',
+                tail_bound= max(abs(x) for x in args.data_range),
                 apply_unconditional_transform=False,
             )
         elif args.base_transform_type == 'affine':

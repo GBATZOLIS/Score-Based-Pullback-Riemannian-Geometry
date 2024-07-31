@@ -8,7 +8,7 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/combined_elongated_gaussians"
-    config.experiment = "std_0.3_affine_volume_reg"
+    config.experiment = "std_0.3_affine_isometry_reg"
     config.eval_log_frequency = 100
 
     # Model settings
@@ -29,6 +29,7 @@ def get_config():
     config.std = 0.3
     config.use_reg = True
     config.reg_factor = 1.0
+    config.reg_type='isometry'
     config.use_cv = False
 
     # Data settings
@@ -37,6 +38,7 @@ def get_config():
     config.data_path = "./data"
     config.d = 2
     config.batch_size = 64
+    config.data_range = [-4,4]
 
     # Device settings
     config.device = "cuda" if torch.cuda.is_available() else "cpu"

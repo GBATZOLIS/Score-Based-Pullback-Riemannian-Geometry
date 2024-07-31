@@ -44,7 +44,41 @@ def check_orthogonality(phi, val_loader, device, num_samples=100):
     avg_deviation = np.mean(orthogonality_deviation)
     return avg_deviation
 
+def generate_and_plot_samples_images(phi, psi, num_samples, device, writer, epoch):
+    """
+    Generate image samples from the learned distribution and plot them.
+    
+    :param phi: The learned diffeomorphism.
+    :param psi: The strongly convex function.
+    :param num_samples: Number of samples to generate.
+    :param device: The device on which tensors are located.
+    :param writer: The TensorBoard logger.
+    :param epoch: The current training epoch.
+    """
+    # Determine the shape of the images
+    c, h, w = phi.args.c, phi.args.h, phi.args.w
+    
+    # Sample from the base distribution N(0, I) and reshape to image dimensions
+    base_samples = torch.randn(num_samples, c, h, w, device=device)
+    
+    # Transform samples through the inverse of phi
+    transformed_samples = phi.inverse(base_samples)
+    
+    # Ensure the samples are in the same shape as images
+    transformed_samples = transformed_samples.view(num_samples, c, h, w)
+    
+    # Create a grid of the generated samples
+    grid_images = vutils.make_grid(transformed_samples, nrow=int(sqrt(num_samples)), padding=2, normalize=True)
+    
+    # Save the grid to TensorBoard
+    writer.add_image("Generated Samples", grid_images, epoch)
+
+
 def check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader):
+    # Generate and plot samples
+    num_samples = 64
+    generate_and_plot_samples_images(phi, psi, num_samples, device, writer, epoch)
+
     distribution = Unimodal(diffeomorphism=phi, strongly_convex=psi)
     manifold = DeformedGaussianPullbackManifold(distribution)
 
@@ -129,9 +163,9 @@ def generate_and_plot_samples(phi, psi, num_samples, device, writer, epoch):
     writer.add_figure('Generated Samples', plt.gcf(), global_step=epoch)
     plt.close()
 
-def check_manifold_properties_single_banana(phi, psi, writer, epoch, device, val_loader):
+def check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, val_loader, range=[-6,6], special_points=[[2., 4.], [2., -4.]]):
     # Generate and plot samples
-    num_samples=512
+    num_samples = 512
     generate_and_plot_samples(phi, psi, num_samples, device, writer, epoch)
 
     # Test and log orthogonality
@@ -142,8 +176,8 @@ def check_manifold_properties_single_banana(phi, psi, writer, epoch, device, val
     manifold = DeformedGaussianPullbackManifold(distribution)
 
     # Check the density
-    xx = torch.linspace(-6.0, 6.0, 500, device=device)
-    yy = torch.linspace(-6.0, 6.0, 500, device=device)
+    xx = torch.linspace(range[0], range[1], 500, device=device)
+    yy = torch.linspace(range[0], range[1], 500, device=device)
     x_grid, y_grid = torch.meshgrid(xx, yy, indexing='ij')
 
     xy_grid = torch.zeros((*x_grid.shape, 2), device=device)
@@ -166,8 +200,8 @@ def check_manifold_properties_single_banana(phi, psi, writer, epoch, device, val
     # Check barycenter
 
     # Special points
-    x0 = torch.tensor([2., 4.], device=device)
-    x1 = torch.tensor([2., -4.], device=device)
+    x0 = torch.tensor(special_points[0], device=device)
+    x1 = torch.tensor(special_points[1], device=device)
     x = torch.zeros((2, 2), device=device)
     x[0] = x0
     x[1] = x1
@@ -236,7 +270,7 @@ def check_manifold_properties_single_banana(phi, psi, writer, epoch, device, val
     # Riemannian autoencoder
     epsilon = 0.1
     banana_rae = DeformedGaussianRiemannianAutoencoder(manifold, epsilon)
-    p = torch.linspace(-6, 6, 100, device=device)[:, None]
+    p = torch.linspace(range[0], range[1], 100, device=device)[:, None]
     rae_decode_p = banana_rae.decode(p).detach().cpu().numpy()
 
     fig, ax = plt.subplots()
@@ -245,9 +279,18 @@ def check_manifold_properties_single_banana(phi, psi, writer, epoch, device, val
     writer.add_figure("Riemannian Autoencoder", fig, epoch)
     plt.close(fig)
 
+
 def check_manifold_properties(dataset, phi, psi, writer, epoch, device, val_loader):
     if dataset == 'mnist':
         check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader)
-    elif dataset in ['single_banana', 'combined_elongated_gaussians']:
-        check_manifold_properties_single_banana(phi, psi, writer, epoch, device, val_loader)
+    elif dataset in 'single_banana':
+        range=[-6.,6.]
+        special_points=[[2., 4.], [2., -4.]]
+        check_manifold_properties_2D_distributions(phi, psi, writer, epoch, 
+                                                   device, val_loader, range, special_points)
+    elif dataset == 'combined_elongated_gaussians':
+        range=[-3.,3.]
+        special_points=[[0., 1.], [-1., 0.]]
+        check_manifold_properties_2D_distributions(phi, psi, writer, epoch, 
+                                                   device, val_loader, range, special_points)
 
