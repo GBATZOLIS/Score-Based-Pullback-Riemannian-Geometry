@@ -8,8 +8,8 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/single_banana"
-    config.experiment = "test_no_vr_no_reg"
-    config.eval_log_frequency = 100
+    config.experiment = "score_matching_affine_volume_reg"
+    config.eval_log_frequency = 50
 
     # Model settings
     config.diffeomorphism_class = 'euclidean_diffeomorphism'
@@ -24,10 +24,11 @@ def get_config():
     config.num_flow_steps = 2
 
     # Training settings
-    config.epochs = 2000
+    config.epochs = 500 #max number of epochs. We use cosine learning rate annealing until config.epochs, where lr goes to 0.
     config.checkpoint_frequency = 1
-    config.std = 1
-    config.use_reg = False
+    config.loss = 'denoising score matching' #choices:[denoising score matching, loglikelihood]
+    config.std = 0.1
+    config.use_reg = True
     config.reg_factor = 1.0
     config.use_cv = False
 

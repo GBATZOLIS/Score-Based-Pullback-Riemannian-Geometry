@@ -1,0 +1,158 @@
+import torch
+import numpy as np
+from src.training.train_utils import get_score_fn, get_log_density_fn
+import torch.autograd as autograd
+
+def get_loss_function(loss_type, args_std):
+    return LossFunctionWrapper(loss_type, args_std)
+
+class LossFunctionWrapper:
+    def __init__(self, loss_type, args_std):
+        self.loss_type = loss_type
+        self.args_std = args_std
+        if loss_type == 'loglikelihood':
+            self.loss_fn = loglikelihood_maximisation
+            self.loss_name = "Loss/Log Likelihood"
+        elif loss_type == 'denoising score matching':
+            self.loss_fn = compute_loss_variance_reduction
+            self.loss_name = "Loss/Score"
+        else:
+            raise ValueError(f"Unknown loss type: {loss_type}")
+        self.reg_loss_name = "Loss/Regularization"
+
+    def __call__(self, phi, psi, x, train=True, use_cv=False, use_reg=False, reg_factor=1, mcmc_steps=20, epsilon=0.1, device='cuda:0'):
+        if self.loss_type == 'loglikelihood':
+            return self.loss_fn(phi, psi, x, self.args_std, train, use_reg, reg_factor, mcmc_steps, epsilon, device)
+        elif self.loss_type == 'denoising score matching':
+            return self.loss_fn(phi, psi, x, self.args_std, train, use_cv, use_reg, reg_factor, device)
+
+
+def volume_regularisation(logabsdetjac):
+    """
+    Computes the volume preservation regularization term.
+    
+    :param logabsdetjac: The log absolute determinant of the Jacobian.
+    :return: The volume preservation regularization loss.
+    """
+    return torch.mean(torch.abs(logabsdetjac))
+
+
+def regularisation_term(reg_type, phi, x, train, device):
+    if reg_type=='isometry':
+        #promotes isometry regularisation
+
+        batch_size, *dims = x.shape
+        v = torch.randn(batch_size, *dims, device=device, requires_grad=True)
+        v_norm = v.view(batch_size, -1).norm(dim=1, keepdim=True).view(batch_size, *[1]*len(dims))
+        v = v / v_norm
+
+        if not train:
+            torch.set_grad_enabled(True)
+
+        _, Jv = torch.autograd.functional.jvp(lambda x: phi(x), (x,), (v,), create_graph=True)
+
+        if not train:
+            torch.set_grad_enabled(False)
+            
+        norms = Jv.view(batch_size, -1).norm(dim=1)
+        return torch.mean((norms - 1) ** 2)
+    elif reg_type == 'volume':
+        _, logabsdetjac = phi._transform(x, context=None)
+        return torch.mean(torch.abs(logabsdetjac))
+
+def get_energy_fn(phi, psi):
+    """
+    Defines the energy function E_theta(x) = psi(phi(x)).
+    """
+    def energy_fn(x):
+        phi_x = phi.forward(x)
+        return psi.forward(phi_x)
+    return energy_fn
+
+def get_fast_energy_fn(phi, psi):
+    def fast_energy_fn(phi_x):
+        return psi.forward(phi_x)
+    return fast_energy_fn
+
+def langevin_mcmc(energy_fn, x0, steps=20, epsilon=0.1, train=True):
+    """
+    Langevin MCMC to draw samples from p_theta(x).
+    """
+    x = x0.clone().detach().requires_grad_(True)
+
+    if not train:
+        torch.set_grad_enabled(True)
+    
+    for _ in range(steps):
+        energy = energy_fn(x)
+        grad = autograd.grad(energy.sum(), x, retain_graph=False, create_graph=False)[0]
+        
+        with torch.no_grad():
+            x = x - 0.5 * epsilon**2 * grad + epsilon * torch.randn_like(x)
+        
+        # Detach x to prevent accumulation of gradients and re-enable requires_grad
+        x = x.detach().requires_grad_(True)
+    
+    if not train:
+        torch.set_grad_enabled(False)
+    
+    return x.detach()
+
+def loglikelihood_maximisation(phi, psi, x, args_std, train=True, use_reg=False, reg_factor=1, mcmc_steps=20, epsilon=0.1, device='cuda:0'):
+    """
+    Maximizes the log-likelihood with respect to the energy model.
+    """
+    # Add noise to input
+    x = x + args_std * torch.randn_like(x, device=device)
+
+    # Define the energy function E_theta(x)
+    fast_energy_fn = get_fast_energy_fn(phi, psi)
+
+    # Run Langevin MCMC to get samples from the model distribution
+    # x_sampled = langevin_mcmc(energy_fn, x, mcmc_steps, epsilon, train=train)
+
+    # Compute the gradient term for the normalizing constant Z_theta
+    # energy_x_sampled = energy_fn(x_sampled)
+    # grad_log_z_theta = energy_x_sampled.mean()
+
+    # Compute phi(x) and logabsdetjacobian
+    phi_x, logabsdetjac = phi._transform(x, context=None)
+
+    # Density learning loss (negative log likelihood) including logabsdetjac
+    density_learning_loss = (fast_energy_fn(phi_x).mean() - logabsdetjac.mean())
+
+    # Regularization term if applicable
+    reg_loss = volume_regularisation(logabsdetjac) if use_reg else torch.tensor(0.0, device=device)
+    
+    # Total loss
+    loss = density_learning_loss + (reg_factor * reg_loss if use_reg else torch.tensor(0.0, device=device))
+    
+    return loss, density_learning_loss, reg_loss
+
+def compute_loss_variance_reduction(phi, psi, x, args_std, train=True, use_cv=False, use_reg=False, reg_factor=1, device='cuda:0'):
+    def score_matching_loss():
+        x.requires_grad_(True)  # Ensure x requires gradients
+        batch_size = x.size(0)
+        std = args_std * torch.ones_like(x, device=device)
+        score_fn = get_score_fn(phi, psi, train=train)
+        z = torch.randn_like(x, device=device)
+        x_pert = x + std * z
+        score = score_fn(x_pert)
+        term_inside_norm = (z / std + score)
+        loss = torch.mean(torch.norm(term_inside_norm.view(batch_size, -1), dim=1)**2) / 2
+
+        if use_cv:
+            grad_log_p = score_fn(x)  # ∇_x log p_theta(x)
+            control_variate = (2 / args_std) * (z * grad_log_p).view(batch_size, -1).sum(dim=1) + \
+                              (z.view(batch_size, -1).norm(dim=1) ** 2 / args_std ** 2) - \
+                              torch.prod(torch.tensor(x.shape[1:], device=device)) / args_std ** 2
+            loss -= torch.mean(control_variate)
+
+        return loss
+
+    density_learning_loss = score_matching_loss()
+    reg_loss = regularisation_term('volume', phi, x, train, device) if use_reg else torch.tensor(0.0, device=device) #use_reg or not train 
+
+    loss = density_learning_loss + (reg_factor * reg_loss if use_reg else torch.tensor(0.0, device=device))
+    
+    return loss, density_learning_loss, reg_loss

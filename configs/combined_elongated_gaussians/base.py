@@ -7,8 +7,8 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     # Logging settings
-    config.base_log_dir = "./results/single_banana"
-    config.experiment = "test_no_vr_no_reg"
+    config.base_log_dir = "./results/combined_elongated_gaussians"
+    config.experiment = "std_0.3_affine_volume_reg"
     config.eval_log_frequency = 100
 
     # Model settings
@@ -26,14 +26,14 @@ def get_config():
     # Training settings
     config.epochs = 2000
     config.checkpoint_frequency = 1
-    config.std = 1
-    config.use_reg = False
+    config.std = 0.3
+    config.use_reg = True
     config.reg_factor = 1.0
     config.use_cv = False
 
     # Data settings
     config.dataset_class = 'numpy_dataset'
-    config.dataset = 'single_banana'
+    config.dataset = 'combined_elongated_gaussians'
     config.data_path = "./data"
     config.d = 2
     config.batch_size = 64

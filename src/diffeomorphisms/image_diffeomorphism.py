@@ -213,34 +213,42 @@ class image_diffeomorphism(core_image_diffeomorphism):
         return flattened_tensor.view(flattened_tensor.size(0), self.c, self.h, self.w)
 
     def flatten_unflatten_decorator(func):
-        def wrapper(self, *args):
-            # Check if the input tensors are flattened
-            input_was_flattened = [arg.dim() == 2 for arg in args]
-            device = args[0].device
+        def wrapper(self, arg):
+            # Check if the input tensor is flattened
+            input_was_flattened = arg.dim() == 2
+            print(f'input_was_flattened: {input_was_flattened}')
+            
+            # Get the device of the input tensor
+            device = arg.device
+            print(f'Input tensor size: {arg.size()}')
+            
             # Unflatten if necessary and move to the same device
-            unflattened_args = [self.unflatten_image(arg.to(device)) if is_flattened else arg.to(device) for arg, is_flattened in zip(args, input_was_flattened)]
+            unflattened_arg = self.unflatten_image(arg.to(device)) if input_was_flattened else arg.to(device)
+            print(f'Unflattened tensor size: {unflattened_arg.size()}')
+            
             # Call the original method
-            result = func(self, *unflattened_args)
-            # Flatten the output tensor if the inputs were flattened
-            if isinstance(result, tuple):
-                result = tuple(self.flatten_image(res.to(device)) if is_flattened else res.to(device) for res, is_flattened in zip(result, input_was_flattened))
-            else:
-                result = self.flatten_image(result.to(device)) if any(input_was_flattened) else result.to(device)
+            result = func(self, unflattened_arg)
+            print(f'Result tensor size before flattening: {result.size()}')
+            
+            # Flatten the output tensor if the input was flattened
+            result = self.flatten_image(result.to(device)) if input_was_flattened else result.to(device)
+            print(f'Result tensor size after flattening: {result.size()}')
+            
             return result
         return wrapper
 
-    @flatten_unflatten_decorator
+    #@flatten_unflatten_decorator
     def forward(self, x):
         return super().forward(x)
 
-    @flatten_unflatten_decorator
+    #@flatten_unflatten_decorator
     def inverse(self, y):
         return super().inverse(y)
 
-    @flatten_unflatten_decorator
+    #@flatten_unflatten_decorator
     def differential_forward(self, x, X):
         return super().differential_forward(x, X)
 
-    @flatten_unflatten_decorator
+    #@flatten_unflatten_decorator
     def differential_inverse(self, y, Y):
         return super().differential_inverse(y, Y)

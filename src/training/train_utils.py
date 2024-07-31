@@ -1,5 +1,10 @@
 import torch
-import os 
+import numpy as np
+import os
+import sys
+import importlib.util
+from collections import defaultdict
+
 
 class EMA:
     """
@@ -74,7 +79,20 @@ class EMA:
                 param.data = self.backup[name].clone()
         self.backup = {}
 
+class EMAForScalar:
+    def __init__(self, decay=0.999):
+        self.decay = decay
+        self.shadow = None
 
+    def update(self, value):
+        if self.shadow is None:
+            self.shadow = value
+        else:
+            self.shadow = self.decay * self.shadow + (1 - self.decay) * value
+
+    def get(self):
+        return self.shadow
+    
 class WarmUpScheduler:
     def __init__(self, optimizer, target_lr, warmup_steps):
         self.optimizer = optimizer
@@ -178,7 +196,8 @@ def load_model(model, ema_model, checkpoint_path, model_name, is_ema=False):
 
 def get_log_density_fn(phi, psi):
     def log_density_fn(x):
-        return -psi.forward(phi.forward(x))
+        phi_x = phi.forward(x)
+        return -psi.forward(phi_x)
     return log_density_fn
 
 def get_score_fn(phi, psi, train=True):
@@ -195,8 +214,40 @@ def get_score_fn(phi, psi, train=True):
         return grad_log_density
     return score_fn
 
+def set_visible_gpus(gpus):
+    os.environ["CUDA_VISIBLE_DEVICES"] = gpus
+
 def count_parameters(model):
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return total_params, trainable_params
 
+def check_parameters_device(model):
+    device_count = defaultdict(int)
+
+    for param in model.parameters():
+        device_count[param.device] += 1
+
+    if len(device_count) == 1:
+        device = next(iter(device_count))
+        print(f"All parameters are on the same device: {device}")
+    else:
+        print("Parameters are on different devices:")
+        for device, count in device_count.items():
+            print(f"{count} parameters are on device: {device}")
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+def load_config(config_path):
+    spec = importlib.util.spec_from_file_location("config_module", config_path)
+    config_module = importlib.util.module_from_spec(spec)
+    sys.modules["config_module"] = config_module
+    spec.loader.exec_module(config_module)
+    return config_module.get_config()

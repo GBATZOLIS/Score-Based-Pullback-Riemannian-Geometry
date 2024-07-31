@@ -6,6 +6,9 @@ import numpy as np
 from src.manifolds.deformed_gaussian_pullback_manifold import DeformedGaussianPullbackManifold
 from src.riemannian_autoencoder.deformed_gaussian_riemannian_autoencoder import DeformedGaussianRiemannianAutoencoder
 from src.unimodal import Unimodal
+import torchvision.utils as vutils
+from math import sqrt, ceil
+import random 
 
 def check_orthogonality(phi, val_loader, device, num_samples=100):
     orthogonality_deviation = []
@@ -41,7 +44,96 @@ def check_orthogonality(phi, val_loader, device, num_samples=100):
     avg_deviation = np.mean(orthogonality_deviation)
     return avg_deviation
 
-def check_manifold_properties(phi, psi, writer, epoch, device, val_loader):
+def check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader):
+    distribution = Unimodal(diffeomorphism=phi, strongly_convex=psi)
+    manifold = DeformedGaussianPullbackManifold(distribution)
+
+    # Get the first batch of validation images
+    num_pairs=20 
+    num_interpolations=10
+
+    val_batch = next(iter(val_loader))
+    images = val_batch[0].to(device)
+    num_images = images.size(0)
+    
+    # Generate the specified number of unique pairs of images
+    pairs = []
+    while len(pairs) < num_pairs:
+        i, j = random.sample(range(num_images), 2)
+        if j != i and (i, j) not in pairs and (j, i) not in pairs:
+            pairs.append((i, j))
+
+    # Test interpolation for each pair
+    t = torch.linspace(0., 1., num_interpolations, device=device)
+    all_interpolations = []
+    for (i, j) in pairs:
+        x0, x1 = images[i], images[j]
+        geodesic = manifold.geodesic(x0, x1, t).detach().cpu()
+        all_interpolations.append(geodesic)
+
+    # Create a grid of interpolations
+    grid_images = []
+    for geodesic in all_interpolations:
+        grid_images.extend([geodesic[0], *geodesic[1:-1], geodesic[-1]])
+
+    interpolation_grid = vutils.make_grid(grid_images, nrow=num_interpolations, padding=2, normalize=True)
+    writer.add_image("Geodesic Interpolation", interpolation_grid, epoch)
+
+    # Riemannian autoencoder
+    epsilon = 0.1
+    banana_rae = DeformedGaussianRiemannianAutoencoder(manifold, epsilon)
+
+    # Encode and decode the first batch
+    encoded_images = banana_rae.encode(images)
+    decoded_images = banana_rae.decode(encoded_images).detach().cpu()
+
+    num_rows = int(sqrt(num_images))
+    num_cols = ceil(num_images / num_rows)
+
+    original_grid = vutils.make_grid(images.cpu(), nrow=num_cols, padding=2, normalize=True)
+    writer.add_image("Original Images", original_grid, epoch)
+
+    decoded_grid = vutils.make_grid(decoded_images, nrow=num_cols, padding=2, normalize=True)
+    writer.add_image("Projected on Manifold Images", decoded_grid, epoch)
+
+def generate_and_plot_samples(phi, psi, num_samples, device, writer, epoch):
+    """
+    Generate samples from the learned distribution and plot them.
+    
+    :param phi: The learned diffeomorphism.
+    :param psi: The strongly convex function.
+    :param num_samples: Number of samples to generate.
+    :param device: The device on which tensors are located.
+    :param writer: The TensorBoard logger.
+    :param epoch: The current training epoch.
+    """
+    d = phi.args.d
+    # Sample from the base distribution N(0, D)
+    base_samples = torch.randn(num_samples, d, device=device) * psi.diagonal.sqrt()
+    
+    # Transform samples through the inverse of phi
+    transformed_samples = phi.inverse(base_samples)
+    
+    # Convert samples to numpy for plotting
+    transformed_samples_np = transformed_samples.detach().cpu().numpy()
+    
+    # Plot the samples
+    plt.figure(figsize=(8, 8))
+    plt.scatter(transformed_samples_np[:, 0], transformed_samples_np[:, 1], alpha=0.5)
+    plt.title('Generated Samples')
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    plt.grid(True)
+    
+    # Save the plot to TensorBoard
+    writer.add_figure('Generated Samples', plt.gcf(), global_step=epoch)
+    plt.close()
+
+def check_manifold_properties_single_banana(phi, psi, writer, epoch, device, val_loader):
+    # Generate and plot samples
+    num_samples=512
+    generate_and_plot_samples(phi, psi, num_samples, device, writer, epoch)
+
     # Test and log orthogonality
     orthogonality_deviation = check_orthogonality(phi, val_loader, device)
     writer.add_scalar("Orthogonality Deviation", orthogonality_deviation, epoch)
@@ -62,8 +154,12 @@ def check_manifold_properties(phi, psi, writer, epoch, device, val_loader):
     x_grid_cpu = x_grid.cpu().numpy()
     y_grid_cpu = y_grid.cpu().numpy()
 
+    # Set contour levels focusing on high-density region
+    contour_levels = np.linspace(density.min(), density.max(), 10)
+
     fig, ax = plt.subplots()
-    ax.contour(x_grid_cpu, y_grid_cpu, density)
+    contour = ax.contour(x_grid_cpu, y_grid_cpu, density, levels=contour_levels)
+    plt.colorbar(contour, ax=ax)  # Add color bar for contour values
     writer.add_figure("Density", fig, epoch)
     plt.close(fig)
 
@@ -149,5 +245,9 @@ def check_manifold_properties(phi, psi, writer, epoch, device, val_loader):
     writer.add_figure("Riemannian Autoencoder", fig, epoch)
     plt.close(fig)
 
-
+def check_manifold_properties(dataset, phi, psi, writer, epoch, device, val_loader):
+    if dataset == 'mnist':
+        check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader)
+    elif dataset in ['single_banana', 'combined_elongated_gaussians']:
+        check_manifold_properties_single_banana(phi, psi, writer, epoch, device, val_loader)
 

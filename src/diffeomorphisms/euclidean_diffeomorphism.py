@@ -10,7 +10,23 @@ from torch.autograd.functional import jvp
 def get_base_transform_fn(args):
     dim = args.d
     def create_base_transform(i):
-        if args.base_transform_type == 'rq':
+        if args.base_transform_type == 'gin':
+            return transforms.GeneralIncompressibleFlowTransform(
+                mask=utils.create_alternating_binary_mask(
+                    features=dim,
+                    even=(i % 2 == 0)
+                ),
+                transform_net_create_fn=lambda in_features, out_features:
+                nn_.ResidualNet(
+                    in_features=in_features,
+                    out_features=out_features,
+                    hidden_features=args.hidden_features,
+                    num_blocks=args.num_transform_blocks,
+                    dropout_probability=args.dropout_probability,
+                    use_batch_norm=args.use_batch_norm
+                )
+            )
+        elif args.base_transform_type == 'rq':
             return transforms.PiecewiseRationalQuadraticCouplingTransform(
                 mask=utils.create_alternating_binary_mask(
                     features=dim,
@@ -65,6 +81,7 @@ class euclidean_diffeomorphism(Diffeomorphism):
         :return: N x 2
         """
         out, logabsdetjacobian = self._transform(x, context=None)
+        
         return out
 
     def inverse(self, y):
@@ -98,4 +115,14 @@ class euclidean_diffeomorphism(Diffeomorphism):
         """
         _, jvp_result = jvp(lambda y: self._transform.inverse(y, context=None)[0], (y,), (Y,))
         return jvp_result
+
+    def logabsdetjacobian(self, x):
+        """
+        Compute the log absolute determinant of the Jacobian of the transformation at x.
+        
+        :param x: A batch of points, N x 2.
+        :return: The log absolute determinant of the Jacobian, N x 1.
+        """
+        _, logabsdetjacobian = self._transform(x, context=None)
+        return logabsdetjacobian
     
