@@ -4,8 +4,52 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import imageio
-import os 
+import os
 import argparse
+
+class combined_elongated_gaussians:
+    def __init__(self):
+        self.std_x = torch.tensor([1.0, 0.1])  # Standard deviations for the first Gaussian
+        self.std_y = torch.tensor([0.1, 1.0])  # Standard deviations for the second Gaussian
+
+    def log_density(self, x):
+        term1 = 0.5 * torch.sum((x / self.std_x) ** 2, dim=1)
+        term2 = 0.5 * torch.sum((x / self.std_y) ** 2, dim=1)
+        log_density_x = -term1 - torch.log(2 * np.pi * self.std_x[0] * self.std_x[1])
+        log_density_y = -term2 - torch.log(2 * np.pi * self.std_y[0] * self.std_y[1])
+        combined_log_density = torch.logaddexp(log_density_x, log_density_y) - torch.log(torch.tensor(2.0))
+        return combined_log_density
+
+    def score(self, x):
+        """ Compute the score function using PyTorch's autograd """
+        original_requires_grad = x.requires_grad if isinstance(x, torch.Tensor) else False
+
+        if not isinstance(x, torch.Tensor):
+            x = torch.tensor(x, dtype=torch.float32, requires_grad=True)
+        elif not x.requires_grad:
+            x.requires_grad_(True)
+
+        # Compute the log density
+        y = self.log_density(x)
+
+        # Compute the sum of log density to make it a scalar
+        y_sum = y.sum()
+
+        # Compute gradients of y_sum with respect to x using torch.autograd.grad
+        gradients = torch.autograd.grad(y_sum, x, create_graph=True)
+
+        # Ensure that gradients are computed
+        if gradients[0] is None:
+            raise ValueError("Gradient not computed, check the computational graph and inputs.")
+
+        # Clone the gradients
+        cloned_gradients = gradients[0].clone()
+
+        # Reset requires_grad to its original state if necessary
+        if not original_requires_grad:
+            x.requires_grad_(False)
+
+        return cloned_gradients
 
 # Enable anomaly detection
 torch.autograd.set_detect_anomaly(True)
@@ -15,7 +59,7 @@ def langevin_mcmc(model, num_samples, step_size, initial_value):
         initial_value.requires_grad_(True)
     
     batch_size = initial_value.shape[0]
-    samples = torch.zeros(num_samples, batch_size, model.d)  # Initialize tensor to store trajectories
+    samples = torch.zeros(num_samples, batch_size, 2)  # Initialize tensor to store trajectories
     current_x = initial_value.clone()  # Ensure it is a leaf tensor
 
     for i in tqdm(range(num_samples)):
@@ -58,15 +102,18 @@ def plot_samples(samples, log_density_values, x_grid, y_grid, step):
 
 def main():
     parser = argparse.ArgumentParser(description='Run Langevin MCMC to generate samples and optional outputs.')
+    parser.add_argument('--dataset', type=str, choices=['single_banana', 'combined_elongated_gaussians'], required=True, help='Choose the dataset.')
     parser.add_argument('--create_gif', action='store_true', help='Create a GIF of the sampling process.')
     parser.add_argument('--save_data', action='store_false', help='Save the last sample in the MCMC chain.')
     parser.add_argument('--save_dir', type=str, default='./data/', help='Directory to save the data.')
 
     args = parser.parse_args()
 
-    #parameters
-    shear, offset, a1, a2 = 1/9, 0., 1/4, 4
-    unimodal = QuadraticBanana(shear, offset, torch.tensor([a1, a2]))
+    if args.dataset == 'single_banana':
+        shear, offset, a1, a2 = 1/9, 0., 1/4, 4
+        model = QuadraticBanana(shear, offset, torch.tensor([a1, a2]))
+    elif args.dataset == 'combined_elongated_gaussians':
+        model = combined_elongated_gaussians()
 
     # Define the grid for visualization
     xx = torch.linspace(-6.0, 6.0, 500)
@@ -77,14 +124,14 @@ def main():
     xy_grid = torch.stack([x_grid.flatten(), y_grid.flatten()], dim=1)
 
     # Compute log density over the grid
-    log_density_values = unimodal.log_density(xy_grid).reshape(500, 500).detach().numpy()
+    log_density_values = model.log_density(xy_grid).reshape(500, 500).detach().numpy()
     
     # Run the Langevin MCMC
     num_samples = 2500
     num_mcmc_samples = 1000
     step_size = 0.1
-    initial_value = torch.zeros((num_samples, 2), requires_grad=True)  # Batch of 1
-    interval_samples = langevin_mcmc(unimodal, num_mcmc_samples, step_size, initial_value)
+    initial_value = torch.zeros((num_samples, 2), requires_grad=True)
+    interval_samples = langevin_mcmc(model, num_mcmc_samples, step_size, initial_value)
 
     if args.create_gif:
         # Generate plots and GIF
@@ -111,7 +158,6 @@ def main():
         num_samples = len(final_samples)
         train_size = int(0.8 * num_samples)
         val_size = int(0.1 * num_samples)
-        #test_size = num_samples - train_size - val_size
 
         # Split the data
         train_data = final_samples[:train_size]
@@ -119,12 +165,13 @@ def main():
         test_data = final_samples[train_size + val_size:]
 
         # Ensure the directory exists
-        os.makedirs(args.save_dir, exist_ok=True)
+        save_path = os.path.join(args.save_dir, args.dataset)
+        os.makedirs(save_path, exist_ok=True)
 
         # Save the datasets as .npy files
-        np.save(os.path.join(args.save_dir, 'train.npy'), train_data)
-        np.save(os.path.join(args.save_dir, 'val.npy'), val_data)
-        np.save(os.path.join(args.save_dir, 'test.npy'), test_data)
+        np.save(os.path.join(save_path, 'train.npy'), train_data)
+        np.save(os.path.join(save_path, 'val.npy'), val_data)
+        np.save(os.path.join(save_path, 'test.npy'), test_data)
 
 if __name__ == "__main__":
     main()

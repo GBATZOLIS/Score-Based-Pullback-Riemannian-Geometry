@@ -45,6 +45,7 @@ from .permutations import RandomPermutation
 from .permutations import ReversePermutation
 
 from .coupling import (
+    GeneralIncompressibleFlowTransform,
     AffineCouplingTransform,
     AdditiveCouplingTransform,
     PiecewiseLinearCouplingTransform,

@@ -43,12 +43,18 @@ class CompositeTransform(Transform):
     @staticmethod
     def _cascade(inputs, funcs, context):
         batch_size = inputs.shape[0]
+        device = inputs.device
         outputs = inputs
-        total_logabsdet = torch.zeros(batch_size)
-        for func in funcs:
+        total_logabsdet = torch.zeros(batch_size, device=device)
+        #print(f"Initial total_logabsdet device: {total_logabsdet.device}")
+        for i, func in enumerate(funcs):
+            #print(f"Before transform {i} ({func.__class__.__name__}): inputs device: {outputs.device}")
             outputs, logabsdet = func(outputs, context)
+            #print(f"After transform {i} ({func.__class__.__name__}): outputs device: {outputs.device}, logabsdet device: {logabsdet.device}")
             total_logabsdet += logabsdet
+            #print(f"After transform {i} ({func.__class__.__name__}): total_logabsdet device: {total_logabsdet.device}")
         return outputs, total_logabsdet
+
 
     def forward(self, inputs, context=None):
         funcs = self._transforms
@@ -129,6 +135,7 @@ class MultiscaleCompositeTransform(Transform):
         return hidden_shape
 
     def forward(self, inputs, context=None):
+        device = inputs.device
         if self._split_dim >= inputs.dim():
             raise ValueError('No split_dim in inputs.')
         if self._num_transforms != len(self._transforms):
@@ -153,7 +160,7 @@ class MultiscaleCompositeTransform(Transform):
             yield outputs, logabsdet
 
         all_outputs = []
-        total_logabsdet = torch.zeros(batch_size)
+        total_logabsdet = torch.zeros(batch_size, device=device)
 
         for outputs, logabsdet in cascade():
             all_outputs.append(outputs.reshape(batch_size, -1))
@@ -163,6 +170,7 @@ class MultiscaleCompositeTransform(Transform):
         return all_outputs, total_logabsdet
 
     def inverse(self, inputs, context=None):
+        device = inputs.device
         if inputs.dim() != 2:
             raise ValueError('Expecting NxD inputs')
         if self._num_transforms != len(self._transforms):
@@ -182,7 +190,7 @@ class MultiscaleCompositeTransform(Transform):
             split_inputs.append(flat_input.view(-1, *self._output_shapes[i]))
         rev_split_inputs = split_inputs[::-1]
 
-        total_logabsdet = torch.zeros(batch_size)
+        total_logabsdet = torch.zeros(batch_size, device=device)
 
         # We don't do the splitting for the last (here first) transform.
         hiddens, logabsdet = rev_inv_transforms[0](rev_split_inputs[0], context)

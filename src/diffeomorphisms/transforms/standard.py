@@ -1,15 +1,12 @@
-"""Implementations of some standard transforms."""
-
 import torch
 from src.diffeomorphisms import transforms
-
 
 class IdentityTransform(transforms.Transform):
     """Transform that leaves input unchanged."""
 
     def forward(self, inputs, context=None):
         batch_size = inputs.shape[0]
-        logabsdet = torch.zeros(batch_size)
+        logabsdet = torch.zeros(batch_size, device=inputs.device)
         return inputs, logabsdet
 
     def inverse(self, inputs, context=None):
@@ -35,15 +32,17 @@ class AffineScalarTransform(transforms.Transform):
         return torch.log(torch.abs(self._scale))
 
     def forward(self, inputs, context=None):
+        device = inputs.device
         batch_size = inputs.shape[0]
-        num_dims = torch.prod(torch.tensor(inputs.shape[1:]), dtype=torch.float)
+        num_dims = torch.prod(torch.tensor(inputs.shape[1:], dtype=torch.float, device=device))
         outputs = inputs * self._scale + self._shift
-        logabsdet = torch.full([batch_size], self._log_scale * num_dims)
+        logabsdet = torch.full([batch_size], self._log_scale * num_dims, device=device)
         return outputs, logabsdet
 
     def inverse(self, inputs, context=None):
+        device = inputs.device
         batch_size = inputs.shape[0]
-        num_dims = torch.prod(torch.tensor(inputs.shape[1:]), dtype=torch.float)
+        num_dims = torch.prod(torch.tensor(inputs.shape[1:], dtype=torch.float, device=device))
         outputs = (inputs - self._shift) / self._scale
-        logabsdet = torch.full([batch_size], -self._log_scale * num_dims)
+        logabsdet = torch.full([batch_size], -self._log_scale * num_dims, device=device)
         return outputs, logabsdet

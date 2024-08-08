@@ -159,6 +159,7 @@ class ActNorm(transforms.Transform):
             return self.scale.view(1, -1), self.shift.view(1, -1)
 
     def forward(self, inputs, context=None):
+        device = inputs.device
         if inputs.dim() not in [2, 4]:
             raise ValueError('Expecting inputs to be a 2D or a 4D tensor.')
 
@@ -166,30 +167,35 @@ class ActNorm(transforms.Transform):
             self._initialize(inputs)
 
         scale, shift = self._broadcastable_scale_shift(inputs)
+        scale, shift = scale.to(device), shift.to(device)  # Ensure scale and shift are on the correct device
+
         outputs = scale * inputs + shift
 
         if inputs.dim() == 4:
             batch_size, _, h, w = inputs.shape
-            logabsdet = h * w * torch.sum(self.log_scale) * torch.ones(batch_size)
+            logabsdet = h * w * torch.sum(self.log_scale) * torch.ones(batch_size, device=device)  # Ensure logabsdet is on the correct device
         else:
-            batch_size,_ = inputs.shape
-            logabsdet = torch.sum(self.log_scale) * torch.ones(batch_size)
+            batch_size, _ = inputs.shape
+            logabsdet = torch.sum(self.log_scale) * torch.ones(batch_size, device=device)  # Ensure logabsdet is on the correct device
 
         return outputs, logabsdet
 
     def inverse(self, inputs, context=None):
+        device = inputs.device
         if inputs.dim() not in [2, 4]:
             raise ValueError('Expecting inputs to be a 2D or a 4D tensor.')
 
         scale, shift = self._broadcastable_scale_shift(inputs)
+        scale, shift = scale.to(device), shift.to(device)  # Ensure scale and shift are on the correct device
+
         outputs = (inputs - shift) / scale
 
         if inputs.dim() == 4:
             batch_size, _, h, w = inputs.shape
-            logabsdet = - h * w * torch.sum(self.log_scale) * torch.ones(batch_size)
+            logabsdet = - h * w * torch.sum(self.log_scale) * torch.ones(batch_size, device=device)  # Ensure logabsdet is on the correct device
         else:
             batch_size, _ = inputs.shape
-            logabsdet = - torch.sum(self.log_scale) * torch.ones(batch_size)
+            logabsdet = - torch.sum(self.log_scale) * torch.ones(batch_size, device=device)  # Ensure logabsdet is on the correct device
 
         return outputs, logabsdet
 
@@ -207,6 +213,4 @@ class ActNorm(transforms.Transform):
             self.shift.data = -mu
 
         self.initialized = True
-
-
 
