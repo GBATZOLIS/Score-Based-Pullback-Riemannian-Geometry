@@ -6,21 +6,24 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/mnist"
-    config.experiment = "affine_no_vr_no_reg_sigma_47"
+    config.experiment = "NF_affine_reg_regfactor_200_std_em2"
     config.eval_log_frequency = 10
 
     # Model settings
     config.diffeomorphism_class = 'image_diffeomorphism'
     config.actnorm = True
     config.alpha = 0.05
-    config.coupling_layer_type = 'affine' #"rational_quadratic_spline"
+    config.coupling_layer_type = 'affine'
     config.hidden_channels = 96
     config.levels = 3
     config.multi_scale = False
     config.num_bits = 8
     config.num_res_blocks = 3
-    config.preprocessing = "glow"
-    config.resnet_batchnorm = True
+    config.preprocessing = None
+
+    config.use_resnet = True
+    config.resnet_batchnorm = False
+
     config.steps_per_level = 7
     config.spline_params = {
         "apply_unconditional_transform": False,
@@ -30,15 +33,17 @@ def get_config():
         "num_bins": 4,
         "tail_bound": 3.0
     }
-    config.use_resnet = True
-    config.dropout_prob = 0.2
+    config.dropout_prob = 0. #0.2
 
     # Training settings
-    config.epochs = 10000
+    config.epochs = 1000
+    config.patience_epochs = 100
     config.checkpoint_frequency = 1
-    config.std = 47
-    config.use_reg = False
-    config.reg_factor = 1.0
+    config.loss = 'normalizing flow'
+    config.std = 0.01 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
+    config.use_reg = True
+    config.reg_factor = 200
+    config.reg_type = 'isometry'
     config.use_cv = False
 
     # Data settings
@@ -60,8 +65,7 @@ def get_config():
     config.optimizer = 'AdamW'
 
     # Optional loading of model checkpoints for resuming
-    config.load_phi_checkpoint = None
-    config.load_psi_checkpoint = None
+    config.checkpoint = None #'checkpoint_last'
 
     # Reproducibility
     config.seed = 23

@@ -13,7 +13,13 @@ class DeformedGaussianRiemannianAutoencoder:
 
         if sorted_diagonal[-1] <= epsilon * sorted_diagonal.sum():
             tmp = [sorted_diagonal[i+1:].sum() <= epsilon * sorted_diagonal.sum() for i in range(self.d-1)]
-            self.d_eps = torch.arange(0, self.d-1, device=device)[tmp].min() + 1
+            tmp_indices = torch.arange(0, self.d-1, device=device)[tmp]
+            try:
+                self.d_eps = tmp_indices.min() + 1
+            except RuntimeError as e:
+                print(f"Error: {e}")
+                print(f"tmp_indices: {tmp_indices}")
+                self.d_eps = self.d  # default value in case of error
             self.eps = sorted_diagonal[self.d_eps:].sum()/sorted_diagonal.sum()
         else:
             self.d_eps = self.d

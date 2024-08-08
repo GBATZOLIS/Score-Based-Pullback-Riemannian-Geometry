@@ -6,7 +6,7 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/mnist"
-    config.experiment = "qr_reg_sigma_25"
+    config.experiment = "rq_no_reg_sigma_0.15_deep"
     config.eval_log_frequency = 10
 
     # Model settings
@@ -19,8 +19,11 @@ def get_config():
     config.multi_scale = False
     config.num_bits = 8
     config.num_res_blocks = 3
-    config.preprocessing = "glow"
-    config.resnet_batchnorm = True
+    config.preprocessing = None
+
+    config.use_resnet = True
+    config.resnet_batchnorm = False
+
     config.steps_per_level = 7
     config.spline_params = {
         "apply_unconditional_transform": False,
@@ -30,15 +33,15 @@ def get_config():
         "num_bins": 4,
         "tail_bound": 3.0
     }
-    config.use_resnet = True
     config.dropout_prob = 0. #0.2
 
     # Training settings
-    config.epochs = 10000
+    config.epochs = 1000
     config.checkpoint_frequency = 1
-    config.std = 25 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
-    config.use_reg = True
-    config.reg_factor = 0.001
+    config.std = 0.15 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
+    config.use_reg = False
+    config.reg_factor = 1
+    config.reg_type = 'isometry'
     config.use_cv = False
 
     # Data settings

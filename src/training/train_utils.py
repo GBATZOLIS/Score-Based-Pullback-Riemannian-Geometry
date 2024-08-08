@@ -108,90 +108,129 @@ class WarmUpScheduler:
 
 
     
-def save_model(model, ema_model, epoch, loss, model_name, checkpoint_dir, best_checkpoints):
-    def write_model(model, path, epoch, loss):
-        torch.save({
+def save_model(phi, ema_phi, psi, ema_psi, epoch, loss, checkpoint_dir, best_checkpoints, global_step, best_val_loss, epochs_no_improve, optimizer, scheduler):
+    def write_model(state_dict, path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve):
+        scheduler.step_num = global_step
+        checkpoint = {
             'epoch': epoch,
-            'model_state_dict': model.state_dict(),
+            'model_state_dict': state_dict,
             'loss': loss,
-        }, path)
+            'global_step': global_step,
+            'best_checkpoints': best_checkpoints,
+            'best_val_loss': best_val_loss,
+            'epochs_no_improve': epochs_no_improve,
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict() if scheduler is not None else None
+        }
+        torch.save(checkpoint, path)
     
-        
-    """
-    Saves the model checkpoints including the last and the top three based on the loss.
-    
-    Args:
-        model (torch.nn.Module): The actual model to save.
-        ema_model (EMA): The EMA handler containing the shadow weights.
-        epoch (int): Current epoch number.
-        loss (float): Loss at the current epoch.
-        model_name (str): Name of the model.
-        checkpoint_dir (str): Directory path to save the checkpoint.
-        best_checkpoints (list): List storing the top 3 checkpoints based on loss.
-    """
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
     
-    # Save the last model state
-    last_checkpoint_path = os.path.join(checkpoint_dir, f"{model_name}_last.pth")
-    write_model(model, last_checkpoint_path, epoch, loss)
+    # Save the latest model checkpoint
+    last_checkpoint_path = os.path.join(checkpoint_dir, "checkpoint_last.pth")
+    state_dict = {'phi': phi.state_dict(), 'psi': psi.state_dict()}
+    write_model(state_dict, last_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
 
-    last_ema_checkpoint_path = os.path.join(checkpoint_dir, f"{model_name}_last_EMA.pth")
-    write_model(model, last_ema_checkpoint_path, epoch, loss)
+    # Save the latest EMA model checkpoint
+    last_ema_checkpoint_path = os.path.join(checkpoint_dir, "checkpoint_last_EMA.pth")
+    ema_state_dict = {'phi': ema_phi.shadow, 'psi': ema_psi.shadow}
+    write_model(ema_state_dict, last_ema_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
     
-    # Update the list of best checkpoints
+    # Manage the best checkpoints
     if len(best_checkpoints) < 3:
-        new_checkpoint_path = os.path.join(checkpoint_dir, f"{model_name}_epoch_{epoch}_loss_{loss:.3f}.pth")
-        new_ema_checkpoint_path = os.path.join(checkpoint_dir, f"{model_name}_epoch_{epoch}_loss_{loss:.3f}_EMA.pth")
+        new_checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_loss_{loss:.3f}.pth")
+        new_ema_checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_loss_{loss:.3f}_EMA.pth")
         best_checkpoints.append((new_checkpoint_path, new_ema_checkpoint_path, loss))
-        write_model(model, new_checkpoint_path, epoch, loss)
-        write_model(model, new_ema_checkpoint_path, epoch, loss)
+        write_model(state_dict, new_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
+        write_model(ema_state_dict, new_ema_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
     else:
-        # Find the worst checkpoint (highest loss)
         worst_checkpoint = max(best_checkpoints, key=lambda x: x[2])
         if loss < worst_checkpoint[2]:
-            # Replace the worst checkpoint
             best_checkpoints.remove(worst_checkpoint)
-            os.remove(worst_checkpoint[0])
-            os.remove(worst_checkpoint[1])
+            if os.path.exists(worst_checkpoint[0]):
+                os.remove(worst_checkpoint[0])
+            if os.path.exists(worst_checkpoint[1]):
+                os.remove(worst_checkpoint[1])
 
-            new_checkpoint_path = os.path.join(checkpoint_dir, f"{model_name}_epoch_{epoch}_loss_{loss:.3f}.pth")
-            new_ema_checkpoint_path = os.path.join(checkpoint_dir, f"{model_name}_epoch_{epoch}_loss_{loss:.3f}_EMA.pth")
+            new_checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_loss_{loss:.3f}.pth")
+            new_ema_checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_loss_{loss:.3f}_EMA.pth")
             best_checkpoints.append((new_checkpoint_path, new_ema_checkpoint_path, loss))
-            
-            write_model(model, new_checkpoint_path, epoch, loss)
-            write_model(model, new_ema_checkpoint_path, epoch, loss)
+            write_model(state_dict, new_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
+            write_model(ema_state_dict, new_ema_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
     
-            print(f"{model_name} model saved at '{new_checkpoint_path}'")
-            print(f"{model_name} EMA model saved at '{new_ema_checkpoint_path}'")
+    print(f"Model saved at '{last_checkpoint_path}'")
+    print(f"EMA model saved at '{last_ema_checkpoint_path}'")
 
-
-
-def load_model(model, ema_model, checkpoint_path, model_name, is_ema=False):
-    """
-    Loads a single model and optionally its EMA from a checkpoint file.
-
-    Args:
-        model (torch.nn.Module): The model to load state into.
-        ema_model (EMA): The EMA handler for the model.
-        checkpoint_path (str): Path to the checkpoint file.
-        model_name (str): Name of the model (used for logging).
-        is_ema (bool): Flag to indicate if the checkpoint contains EMA weights.
-
-    Returns:
-        int: The epoch number of the checkpoint.
-        float: The loss at the checkpoint.
-    """
+def load_model(checkpoint_path, phi, ema_phi, psi, ema_psi, optimizer=None, scheduler=None, is_ema=False):
     checkpoint = torch.load(checkpoint_path)
     if is_ema:
-        ema_model.shadow = {name: torch.tensor(data) for name, data in checkpoint['model_state_dict'].items()}
+        ema_phi.shadow = checkpoint['model_state_dict']['phi']
+        ema_psi.shadow = checkpoint['model_state_dict']['psi']
     else:
-        model.load_state_dict(checkpoint['model_state_dict'])
+        phi.load_state_dict(checkpoint['model_state_dict']['phi'])
+        psi.load_state_dict(checkpoint['model_state_dict']['psi'])
+    
     epoch = checkpoint['epoch']
     loss = checkpoint['loss']
+    global_step = checkpoint.get('global_step', 0)
+    best_checkpoints = checkpoint.get('best_checkpoints', [])
+    best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+    epochs_no_improve = checkpoint.get('epochs_no_improve', 0)
+    
+    if optimizer and 'optimizer_state_dict' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    if scheduler and 'scheduler_state_dict' in checkpoint and scheduler is not None:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    
+    print(f"Model {'EMA ' if is_ema else ''}loaded from '{checkpoint_path}', Epoch: {epoch}, Loss: {loss}")
+    
+    return epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve
 
-    print(f"{model_name} {'EMA' if is_ema else ''} model loaded from '{checkpoint_path}', Epoch: {epoch}, Loss: {loss}")
-    return epoch, loss
+def save_model_weights_for_comparison(model):
+    weights = {}
+    for name, param in model.named_parameters():
+        weights[name] = param.data.clone()
+    return weights
+
+def compute_l2_distance(weights1, weights2):
+    """ Compute the L2 distance between two sets of weights. """
+    vector1 = torch.cat([w.flatten() for w in weights1.values()])
+    vector2 = torch.cat([w.flatten() for w in weights2.values()])
+    distance = torch.norm(vector1 - vector2).item()
+    return distance
+
+def resume_training(config, phi, ema_phi, psi, ema_psi, load_model_func, get_optimizer_and_scheduler_func, total_steps, train_loader):
+    checkpoint_path = config.checkpoint
+    if checkpoint_path:
+        if not os.path.isabs(checkpoint_path):
+            checkpoint_path = os.path.join(config.base_log_dir, config.experiment, 'checkpoints', checkpoint_path)
+        if not checkpoint_path.endswith('.pth'):
+            checkpoint_path += '.pth'
+        
+        optimizer, scheduler = get_optimizer_and_scheduler_func(list(phi.parameters()) + list(psi.parameters()), config, total_steps)
+
+        # Save original weights for comparison
+        original_phi_weights = save_model_weights_for_comparison(phi)
+        original_psi_weights = save_model_weights_for_comparison(psi)
+
+        # Load models
+        epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve = load_model_func(
+            checkpoint_path, phi, ema_phi, psi, ema_psi, optimizer, scheduler, is_ema=False
+        )
+        ema_checkpoint_path = checkpoint_path.replace('.pth', '_EMA.pth')
+        load_model_func(ema_checkpoint_path, phi, ema_phi, psi, ema_psi, is_ema=True)
+
+        # Compare weights after loading
+        phi_l2_distance = compute_l2_distance(original_phi_weights, save_model_weights_for_comparison(phi))
+        psi_l2_distance = compute_l2_distance(original_psi_weights, save_model_weights_for_comparison(psi))
+        print(f"L2 distance for Phi model: {phi_l2_distance}")
+        print(f"L2 distance for Psi model: {psi_l2_distance}")
+        print(f"Resuming training from epoch {epoch + 1}")        
+        return epoch + 1, global_step, best_checkpoints, best_val_loss, epochs_no_improve, optimizer, scheduler
+    else:
+        optimizer, scheduler = get_optimizer_and_scheduler_func(list(phi.parameters()) + list(psi.parameters()), config, total_steps)
+        return 0, 0, [], float('inf'), 0, optimizer, scheduler
 
 
 def get_log_density_fn(phi, psi):
@@ -251,3 +290,6 @@ def load_config(config_path):
     sys.modules["config_module"] = config_module
     spec.loader.exec_module(config_module)
     return config_module.get_config()
+
+def get_full_checkpoint_path(checkpoint_dir, filename):
+    return os.path.join(checkpoint_dir, filename) if not os.path.isabs(filename) else filename

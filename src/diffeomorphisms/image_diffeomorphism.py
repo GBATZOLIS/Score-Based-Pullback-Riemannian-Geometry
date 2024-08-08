@@ -8,16 +8,22 @@ from src.diffeomorphisms import nets as nn_
 from src.diffeomorphisms import utils
 
 
+class Conv2dSameSize(nn.Conv2d):
+    def __init__(self, in_channels, out_channels, kernel_size):
+        same_padding = kernel_size // 2  # Padding that would keep the spatial dims the same
+        super().__init__(in_channels, out_channels, kernel_size,
+                         padding=same_padding)
+
 class ConvNet(nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels):
         super().__init__()
         self.hidden_channels = hidden_channels
         self.net = nn.Sequential(
-            nn_.Conv2dSameSize(in_channels, hidden_channels, kernel_size=3),
+            Conv2dSameSize(in_channels, hidden_channels, kernel_size=3),
             nn.ReLU(),
-            nn_.Conv2dSameSize(hidden_channels, hidden_channels, kernel_size=1),
+            Conv2dSameSize(hidden_channels, hidden_channels, kernel_size=1),
             nn.ReLU(),
-            nn_.Conv2dSameSize(hidden_channels, out_channels, kernel_size=3),
+            Conv2dSameSize(hidden_channels, out_channels, kernel_size=3),
         )
 
     def forward(self, inputs, context=None):
@@ -154,17 +160,23 @@ def create_transform(c, h, w, levels, hidden_channels, steps_per_level, alpha, n
             transforms.AffineScalarTransform(shift=alpha, scale=(1 - 2. * alpha)),
             transforms.Logit()
         ])
+    elif preprocessing is None:
+        preprocess_transform = None
     else:
         raise RuntimeError('Unknown preprocessing type: {}'.format(preprocessing))
 
-    return transforms.CompositeTransform([preprocess_transform, mct])
+    if preprocess_transform:
+        return transforms.CompositeTransform([preprocess_transform, mct])
+    else:
+        return transforms.CompositeTransform([mct])
+
 
 class core_image_diffeomorphism(Diffeomorphism):
 
     def __init__(self, args) -> None:
         super().__init__(args.d)
         self.args = args
-        self.transform = create_transform(
+        self._transform = create_transform(
             c=args.c, h=args.h, w=args.w,
             levels=args.levels,
             hidden_channels=args.hidden_channels,
@@ -183,19 +195,19 @@ class core_image_diffeomorphism(Diffeomorphism):
         )
 
     def forward(self, x):
-        out, logabsdetjacobian = self.transform(x, context=None)
+        out, logabsdetjacobian = self._transform(x, context=None)
         return out
 
     def inverse(self, y):
-        out, logabsdetjacobian = self.transform.inverse(y, context=None)
+        out, logabsdetjacobian = self._transform.inverse(y, context=None)
         return out
 
     def differential_forward(self, x, X):
-        _, jvp_result = jvp(lambda x: self.transform(x, context=None)[0], (x,), (X,))
+        _, jvp_result = jvp(lambda x: self._transform(x, context=None)[0], (x,), (X,))
         return jvp_result
 
     def differential_inverse(self, y, Y):
-        _, jvp_result = jvp(lambda y: self.transform.inverse(y, context=None)[0], (y,), (Y,))
+        _, jvp_result = jvp(lambda y: self._transform.inverse(y, context=None)[0], (y,), (Y,))
         return jvp_result
 
 class image_diffeomorphism(core_image_diffeomorphism):

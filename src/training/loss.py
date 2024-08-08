@@ -23,15 +23,20 @@ class LossFunctionWrapper:
         elif self.loss_type == 'denoising score matching':
             self.loss_fn = compute_loss_variance_reduction
             self.loss_name = "Loss/Score"
+        elif self.loss_type == 'normalizing flow':
+            self.loss_fn = normalizing_flow_loss
+            self.loss_name = "Loss/Normalizing Flow"
         else:
             raise ValueError(f"Unknown loss type: {self.loss_type}")
         self.reg_loss_name = "Loss/Regularization"
 
     def __call__(self, phi, psi, x, train, device):
         if self.loss_type == 'loglikelihood':
-            return self.loss_fn(phi, psi, x, self.args_std, train, self.use_reg, self.reg_factor, self.mcmc_steps, self.epsilon, device)
+            return self.loss_fn(phi, psi, x, self.args_std, train, self.use_reg, self.reg_factor, self.mcmc_steps, self.epsilon, self.reg_type, device)
         elif self.loss_type == 'denoising score matching':
             return self.loss_fn(phi, psi, x, self.args_std, train, self.use_cv, self.use_reg, self.reg_factor, self.reg_type, device)
+        elif self.loss_type == 'normalizing flow':
+            return self.loss_fn(phi, psi, x, train, self.use_reg, self.reg_factor, self.reg_type, device)
 
 
 
@@ -106,36 +111,67 @@ def langevin_mcmc(energy_fn, x0, steps=20, epsilon=0.1, train=True):
     
     return x.detach()
 
-def loglikelihood_maximisation(phi, psi, x, args_std, train=True, use_reg=False, reg_factor=1, mcmc_steps=20, epsilon=0.1, device='cuda:0'):
+def loglikelihood_maximisation(phi, psi, x, args_std, train=True, use_reg=False, reg_factor=1, mcmc_steps=20, epsilon=0.1, reg_type='volume', device='cuda:0'):
     """
-    Maximizes the log-likelihood with respect to the energy model.
+    Maximizes the log-likelihood with respect to the energy model. Maximum Likelihood Training with MCMC
     """
     # Add noise to input
     x = x + args_std * torch.randn_like(x, device=device)
 
     # Define the energy function E_theta(x)
-    fast_energy_fn = get_fast_energy_fn(phi, psi)
+    energy_fn = get_energy_fn(phi, psi)
 
     # Run Langevin MCMC to get samples from the model distribution
-    # x_sampled = langevin_mcmc(energy_fn, x, mcmc_steps, epsilon, train=train)
+    x_sampled = langevin_mcmc(energy_fn, x, mcmc_steps, epsilon, train=train)
 
     # Compute the gradient term for the normalizing constant Z_theta
-    # energy_x_sampled = energy_fn(x_sampled)
-    # grad_log_z_theta = energy_x_sampled.mean()
+    energy_x_sampled = energy_fn(x_sampled)
+    grad_log_z_theta = energy_x_sampled.mean()
 
-    # Compute phi(x) and logabsdetjacobian
-    phi_x, logabsdetjac = phi._transform(x, context=None)
+    # Compute the energy of the original inputs
+    energy_x = energy_fn(x)
 
-    # Density learning loss (negative log likelihood) including logabsdetjac
-    density_learning_loss = (fast_energy_fn(phi_x).mean() - logabsdetjac.mean())
+    # Compute density learning loss (negative log likelihood)
+    density_learning_loss = energy_x.mean() - grad_log_z_theta
 
     # Regularization term if applicable
-    reg_loss = volume_regularisation(logabsdetjac) if use_reg else torch.tensor(0.0, device=device)
-    
+    reg_loss = regularisation_term(reg_type, phi, x, train, device) if use_reg else torch.tensor(0.0, device=device)
+
     # Total loss
-    loss = density_learning_loss + (reg_factor * reg_loss if use_reg else torch.tensor(0.0, device=device))
+    loss = density_learning_loss + reg_factor * reg_loss
     
     return loss, density_learning_loss, reg_loss
+
+def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, reg_type='volume', device='cuda:0'):
+    """
+    Maximizes the log-likelihood with respect to the normalizing flow model.
+    """
+    # Derive the diagonal covariance matrix from psi
+    diagonal = psi.diagonal
+    base_dist_cov = torch.diag(diagonal)
+    
+    # Apply the transformation
+    z, logabsdetjacobian = phi._transform(x, context=None)
+
+    # Base distribution is N(0, D)
+    base_dist = torch.distributions.MultivariateNormal(
+        loc=torch.zeros_like(z, device=device),
+        covariance_matrix=base_dist_cov
+    )
+
+    # Compute the negative log-likelihood
+    log_p_z = base_dist.log_prob(z)
+    log_p_x = log_p_z + logabsdetjacobian
+    nll_loss = -torch.mean(log_p_x)
+
+    # Regularization term if applicable
+    reg_loss = regularisation_term(reg_type, phi, x, train, device) if use_reg else torch.tensor(0.0, device=device)
+
+    # Total loss
+    loss = nll_loss + reg_factor * reg_loss
+
+    return loss, nll_loss, reg_loss
+
 
 def compute_loss_variance_reduction(phi, psi, x, args_std, train=True, use_cv=False, use_reg=False, reg_factor=1, reg_type='volume', device='cuda:0'):
     def score_matching_loss():

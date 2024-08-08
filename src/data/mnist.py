@@ -47,6 +47,8 @@ class mnist(Dataset):
         image = np.array(image, dtype=np.float32)
         # Add padding to make the image 32x32
         image = np.pad(image, ((2, 2), (2, 2)), mode='constant', constant_values=0)
+        # Normalize the pixel values to [-1, 1]
+        image = (image / 255.0) * 2 - 1
         # Add a channel dimension (1, h, w)
         image = image[None, :, :]
         return torch.tensor(image), label

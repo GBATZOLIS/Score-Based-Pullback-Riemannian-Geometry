@@ -4,7 +4,7 @@ from torch.utils.tensorboard import SummaryWriter
 import os
 from src.diffeomorphisms import get_diffeomorphism
 from src.strongly_convex.learnable_psi import LearnablePsi
-from src.training.train_utils import EMA, load_config, load_model, save_model, get_log_density_fn, get_score_fn, count_parameters, check_parameters_device, set_visible_gpus, set_seed
+from src.training.train_utils import EMA, load_config, load_model, save_model, resume_training, get_log_density_fn, get_score_fn, count_parameters, check_parameters_device, set_visible_gpus, set_seed, get_full_checkpoint_path
 from src.training.optim_utils import get_optimizer_and_scheduler
 from src.training.callbacks import check_manifold_properties, check_manifold_properties_images
 from src.training.loss import get_loss_function
@@ -15,7 +15,7 @@ from torch.autograd.functional import jvp
 from src.data import get_dataset
 
 # Set which GPUs are visible
-set_visible_gpus('1')
+set_visible_gpus('3')
 
 def main(config_path):
     config = load_config(config_path)
@@ -67,29 +67,15 @@ def main(config_path):
     # Print the device of each parameter in phi
     check_parameters_device(phi)
         
-    # Load checkpoints if specified
-    if config.load_phi_checkpoint:
-        epoch_phi, loss_phi = load_model(phi, None, config.load_phi_checkpoint, "Phi")
-        ema_path_phi = config.load_phi_checkpoint.replace('.pth', '_EMA.pth')
-        load_model(phi, ema_phi, ema_path_phi, "Phi EMA", is_ema=True)
-
-    if config.load_psi_checkpoint:
-        epoch_psi, loss_psi = load_model(psi, None, config.load_psi_checkpoint, "Psi")
-        ema_path_psi = config.load_psi_checkpoint.replace('.pth', '_EMA.pth')
-        load_model(psi, ema_psi, ema_path_psi, "Psi EMA", is_ema=True)
-
-    step = 0
-    best_checkpoints = []
+    start_epoch, step, best_checkpoints, best_val_loss, epochs_no_improve, optimizer, scheduler = resume_training(
+        config, phi, ema_phi, psi, ema_psi, load_model, get_optimizer_and_scheduler, total_steps, train_loader
+    )
 
     # Get the appropriate loss function
     loss_fn = get_loss_function(config)
 
-    #phi.eval()
-    #psi.eval()
-    #check_manifold_properties(config.dataset, phi, psi, writer, 0, device, val_loader)
-
     # Training and Validation loop
-    for epoch in range(config.epochs):
+    for epoch in range(start_epoch, config.epochs):
         phi.train()
         psi.train()
 
@@ -122,11 +108,9 @@ def main(config_path):
             writer.add_scalar(f"{loss_fn.loss_name} Train Step", density_learning_loss.item(), step)
             writer.add_scalar("Loss/Regularization Train Step", reg_loss.item(), step)
 
-
             if step % 10 == 0:
                 current_lr = optimizer.param_groups[0]['lr']
                 writer.add_scalar("Learning Rate", current_lr, step)
-                
 
             step += 1
             train_iterator.set_postfix(loss=loss.item())
@@ -147,7 +131,6 @@ def main(config_path):
         ema_phi.apply_shadow()
         ema_psi.apply_shadow()
 
-        """MAKE SURE YOU SET PHI AND PSI IN EVAL MODE. CURRENTLY DISABLED EVAL MODEL FOR DEBUGGING."""
         phi.eval()
         psi.eval()
         val_iterator = tqdm(val_loader, desc=f"Validation Epoch {epoch+1}/{config.epochs}", leave=False)
@@ -181,14 +164,26 @@ def main(config_path):
         print(f"Epoch {epoch+1}/{config.epochs}: Train Loss = {avg_train_loss:.4f}, Val Loss = {avg_val_loss:.4f}")
 
         if (epoch + 1) % config.eval_log_frequency == 0:
-            check_manifold_properties(config.dataset, phi, psi, writer, epoch, device, val_loader)
+            check_manifold_properties(config.dataset, phi, psi, writer, epoch, device, val_loader, config.d)
         
         ema_phi.restore()
         ema_psi.restore()
+
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        if epochs_no_improve >= config.get('patience_epochs', 100):
+            print(f"Early stopping at epoch {epoch + 1} due to no improvement in validation loss for {config.patience_epochs} consecutive epochs.")
+            break
         
+        # Checkpoint saving
         if (epoch + 1) % config.checkpoint_frequency == 0:
-            save_model(phi, ema_phi, epoch, avg_train_loss, "Phi", checkpoint_dir, best_checkpoints)
-            save_model(psi, ema_psi, epoch, avg_train_loss, "Psi", checkpoint_dir, best_checkpoints)
+            save_model(phi, ema_phi, psi, ema_psi, epoch, avg_val_loss, 
+                       checkpoint_dir, best_checkpoints, step, 
+                       best_val_loss, epochs_no_improve, optimizer, scheduler)
 
     writer.close()
     print("Training completed.")

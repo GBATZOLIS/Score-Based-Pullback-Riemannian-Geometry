@@ -16,9 +16,20 @@ class WarmUpCosineAnnealingScheduler:
         else:
             progress = (self.step_num - self.warmup_steps) / (self.total_steps - self.warmup_steps)
             lr = 0.5 * self.target_lr * (1 + math.cos(math.pi * progress))
-        
+
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
+
+    def state_dict(self):
+        return {
+            'step_num': self.step_num,
+            'optimizer_state': self.optimizer.state_dict()
+        }
+
+    def load_state_dict(self, state):
+        self.step_num = state['step_num']
+        self.optimizer.load_state_dict(state['optimizer_state'])
+
 
 def get_optimizer_and_scheduler(model_params, config, total_steps):
     """
