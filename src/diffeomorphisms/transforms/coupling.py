@@ -132,6 +132,32 @@ class CouplingTransform(transforms.Transform):
         """Inverse of the coupling transform."""
         raise NotImplementedError()
 
+class GeneralIncompressibleFlowTransform(CouplingTransform):
+    def __init__(self, mask, transform_net_create_fn):
+        super().__init__(mask, transform_net_create_fn)
+        self.s = torch.nn.Parameter(torch.ones(self.num_transform_features))  # Initialize s as ones
+        self.t = torch.nn.Parameter(torch.zeros(self.num_transform_features))  # Initialize t as zeros
+
+    def _transform_dim_multiplier(self):
+        return 1  # Since we are only adding s and t
+
+    def _scale_and_shift(self, transform_params):
+        # In this GIN implementation, the scale and shift parameters are fixed
+        scale = self.s / torch.prod(self.s)
+        shift = self.t
+        return scale, shift
+
+    def _coupling_transform_forward(self, inputs, transform_params):
+        scale, shift = self._scale_and_shift(transform_params)
+        outputs = inputs * scale + shift
+        logabsdet = torch.zeros(inputs.shape[0], device=inputs.device)
+        return outputs, logabsdet
+
+    def _coupling_transform_inverse(self, inputs, transform_params):
+        scale, shift = self._scale_and_shift(transform_params)
+        outputs = (inputs - shift) / scale
+        logabsdet = torch.zeros(inputs.shape[0], device=inputs.device)
+        return outputs, logabsdet
 
 class AffineCouplingTransform(CouplingTransform):
     """An affine coupling layer that scales and shifts part of the variables.

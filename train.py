@@ -1,69 +1,37 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
-import numpy as np
-import argparse
-from src.diffeomorphisms.euclidean_diffeomorphism import EuclideanDiffeomorphism
-from src.strongly_convex.learnable_psi import LearnablePsi
-from src.data.numpy_dataset import NumpyDataset
 import os
-from src.training.train_utils import EMA, load_model, save_model, get_log_density_fn, get_score_fn, WarmUpScheduler, count_parameters
-from src.training.callbacks import check_manifold_properties
-from tqdm import tqdm 
-
+from src.diffeomorphisms import get_diffeomorphism
+from src.strongly_convex.learnable_psi import LearnablePsi
+from src.training.train_utils import EMA, load_config, load_model, save_model, resume_training, get_log_density_fn, get_score_fn, count_parameters, check_parameters_device, set_visible_gpus, set_seed, get_full_checkpoint_path
+from src.training.optim_utils import get_optimizer_and_scheduler
+from src.training.callbacks import check_manifold_properties, check_manifold_properties_images
+from src.training.loss import get_loss_function
+from src.training.plot_utils import plot_data
+from src.training.data_utils import compute_mean_distance_and_sigma
+from tqdm import tqdm
 from torch.autograd.functional import jvp
+from src.data import get_dataset
 
-def compute_loss(phi, psi, x, args_std, train=True, use_reg=False, reg_factor=1, device='cuda:0'):
-    def score_matching_loss():
-        std = args_std * torch.ones_like(x)
-        score_fn = get_score_fn(phi, psi, train=train)
-        z = torch.randn_like(x)
-        x_pert = x + std * z
-        score = score_fn(x_pert)
-        #grad_log_pert_kernel = -1 * z / std
-        #target = grad_log_pert_kernel
-        target = -1 * z
-        loss = torch.mean((std * score - target)**2)
-        return loss
+# Set which GPUs are visible
+set_visible_gpus('3')
 
-    def regularization_term():
-        batch_size, dim = x.shape
-        # Generate random unit norm vectors for each batch element
-        v = torch.randn(batch_size, dim, device=device)
-        v /= v.norm(dim=1, keepdim=True)
+def main(config_path):
+    config = load_config(config_path)
 
-        if not train:
-            torch.set_grad_enabled(True)
+    # Set random seeds
+    set_seed(config.seed)
 
-        # Compute the Jacobian-vector product using PyTorch's jvp function
-        _, Jv = jvp(phi, (x,), (v,))
-
-        if not train:
-            torch.set_grad_enabled(False)
-        
-        # Calculate the norm of each vector in the batch and their deviation from 1
-        norms = Jv.norm(dim=1)
-        return torch.mean((norms - 1) ** 2)
-    
-    if use_reg:
-        loss = score_matching_loss() + reg_factor*regularization_term()
-    else:
-        loss = score_matching_loss()
-    
-    return loss
-
-def main(args):
-    #handle logging directories
-    tensorboard_dir = os.path.join(args.base_log_dir, args.experiment, 'training_logs')
-    checkpoint_dir = os.path.join(args.base_log_dir, args.experiment, 'checkpoints')
+    # Handle logging directories
+    tensorboard_dir = os.path.join(config.base_log_dir, config.experiment, 'training_logs')
+    checkpoint_dir = os.path.join(config.base_log_dir, config.experiment, 'checkpoints')
 
     writer = SummaryWriter(log_dir=tensorboard_dir)
 
     # Initialize the models
-    phi = EuclideanDiffeomorphism(args)
-    psi = LearnablePsi(args.d)
+    phi = get_diffeomorphism(config.diffeomorphism_class)(config)
+    psi = LearnablePsi(config.d)
 
     # Print model summaries
     phi_total_params, phi_trainable_params = count_parameters(phi)
@@ -71,76 +39,75 @@ def main(args):
     print(f"Model Phi - Total Parameters: {phi_total_params}, Trainable Parameters: {phi_trainable_params}")
     print(f"Model Psi - Total Parameters: {psi_total_params}, Trainable Parameters: {psi_trainable_params}")
 
+    # DataLoader for synthetic training and validation data
+    dataset_class = get_dataset(config.dataset_class)
+    train_dataset = dataset_class(config, split='train')
+    train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    _, _, _, _ = compute_mean_distance_and_sigma(train_loader)
+    plot_data(writer, train_loader, config.std, num_points=256)
+
+    val_dataset = dataset_class(config, split='val')
+    val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
+
+    # Calculate total steps for scheduler
+    total_steps = config.epochs * len(train_loader)
+
+    # Optimizer and scheduler
+    optimizer, scheduler = get_optimizer_and_scheduler(list(phi.parameters()) + list(psi.parameters()), config, total_steps)
+
+    # Device configuration
+    device = torch.device(config.device)
+    phi = phi.to(device)
+    psi = psi.to(device)
+
     # Initialize EMA handlers
     ema_phi = EMA(model=phi, decay=0.999)
     ema_psi = EMA(model=psi, decay=0.999)
 
-    # DataLoader for synthetic training and validation data
-    dataset = NumpyDataset(args, split='train')
-    train_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    # Print the device of each parameter in phi
+    check_parameters_device(phi)
+        
+    start_epoch, step, best_checkpoints, best_val_loss, epochs_no_improve, optimizer, scheduler = resume_training(
+        config, phi, ema_phi, psi, ema_psi, load_model, get_optimizer_and_scheduler, total_steps, train_loader
+    )
 
-    val_dataset = NumpyDataset(args, split='val')
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
-
-    # Optimizer and scheduler
-    optimizer = optim.Adam(list(phi.parameters()) + list(psi.parameters()), lr=0)
-    scheduler = WarmUpScheduler(optimizer, args.learning_rate, warmup_steps=2000)
-
-    # Device configuration
-    device = torch.device(args.device)
-    phi.to(device)
-    psi.to(device)
-
-    # Load checkpoints if specified
-    if args.load_phi_checkpoint:
-        epoch_phi, loss_phi = load_model(phi, None, args.load_phi_checkpoint, "Phi")
-        ema_path_phi = args.load_phi_checkpoint.replace('.pth', '_EMA.pth')
-        load_model(phi, ema_phi, ema_path_phi, "Phi EMA", is_ema=True)
-
-    if args.load_psi_checkpoint:
-        epoch_psi, loss_psi = load_model(psi, None, args.load_psi_checkpoint, "Psi")
-        ema_path_psi = args.load_psi_checkpoint.replace('.pth', '_EMA.pth')
-        load_model(psi, ema_psi, ema_path_psi, "Psi EMA", is_ema=True)
-
-    step = 0
-    best_checkpoints = []  # To track the top K checkpoints based on loss
+    # Get the appropriate loss function
+    loss_fn = get_loss_function(config)
 
     # Training and Validation loop
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, config.epochs):
         phi.train()
         psi.train()
 
-        train_iterator = tqdm(train_loader, desc=f"Training Epoch {epoch+1}/{args.epochs}", leave=False)
+        train_iterator = tqdm(train_loader, desc=f"Training Epoch {epoch+1}/{config.epochs}", leave=False)
         total_loss = 0
+        total_density_learning_loss = 0
+        total_reg_loss = 0
         for data in train_iterator:
-            x = data.to(device)
-            loss = compute_loss(phi, psi, x, args.std, train=True, use_reg=args.use_reg, reg_factor=args.reg_factor, device=device)
+            if isinstance(data, list):
+                x = data[0]
+            else:
+                x = data
 
-            '''
-            std = args.std * torch.ones_like(x)
+            x = x.to(device)
+            
+            loss, density_learning_loss, reg_loss = loss_fn(phi, psi, x, train=True, device=device)
+
             optimizer.zero_grad()
-            score_fn = get_score_fn(phi, psi, train=True)
-            z = torch.randn_like(x)
-            x_pert = x + std * z
-            score = score_fn(x_pert)
-            #grad_log_pert_kernel = -1 * z / std
-            #target = grad_log_pert_kernel
-            target = -1 * z
-            loss = torch.mean((std * score - target)**2)
-            '''
             loss.backward()
 
-            # Apply clipping before optimizer step
             torch.nn.utils.clip_grad_norm_(list(phi.parameters()) + list(psi.parameters()), max_norm=1)
             optimizer.step()
 
-            # Update EMA after the optimizer step
             ema_phi.update()
             ema_psi.update()
 
             scheduler.step()
 
-            # Logging learning rate every 10 steps
+            writer.add_scalar("Loss/Train Step", loss.item(), step)
+            writer.add_scalar(f"{loss_fn.loss_name} Train Step", density_learning_loss.item(), step)
+            writer.add_scalar("Loss/Regularization Train Step", reg_loss.item(), step)
+
             if step % 10 == 0:
                 current_lr = optimizer.param_groups[0]['lr']
                 writer.add_scalar("Learning Rate", current_lr, step)
@@ -148,9 +115,17 @@ def main(args):
             step += 1
             train_iterator.set_postfix(loss=loss.item())
             total_loss += loss.item()
+            total_density_learning_loss += density_learning_loss.item()
+            if reg_loss is not None:
+                total_reg_loss += reg_loss.item()
 
         avg_train_loss = total_loss / len(train_loader)
+        avg_train_density_learning_loss = total_density_learning_loss / len(train_loader)
+        avg_train_reg_loss = total_reg_loss / len(train_loader) if total_reg_loss > 0 else 0
+
         writer.add_scalar("Loss/Train", avg_train_loss, epoch)
+        writer.add_scalar(f"{loss_fn.loss_name} Train", avg_train_density_learning_loss, epoch)
+        writer.add_scalar("Loss/Regularization Train", avg_train_reg_loss, epoch)
         
         # Validation
         ema_phi.apply_shadow()
@@ -158,97 +133,65 @@ def main(args):
 
         phi.eval()
         psi.eval()
-        val_iterator = tqdm(val_loader, desc=f"Validation Epoch {epoch+1}/{args.epochs}", leave=False)
+        val_iterator = tqdm(val_loader, desc=f"Validation Epoch {epoch+1}/{config.epochs}", leave=False)
         total_val_loss = 0
+        total_val_density_learning_loss = 0
+        total_val_reg_loss = 0
         with torch.no_grad():
             for data in val_iterator:
-                x = data.to(device)
-                val_loss = compute_loss(phi, psi, x, args.std, train=False, use_reg=args.use_reg, reg_factor=args.reg_factor, device=device)
+                if isinstance(data, list):
+                    x = data[0]
+                else:
+                    x = data
 
-                '''
-                std = args.std * torch.ones_like(x)
-                score_fn = get_score_fn(phi, psi, train=False)
-                z = torch.randn_like(x)
-                x_pert = x + std * z
-                score = score_fn(x_pert)
-                #grad_log_pert_kernel = -1 * z / std
-                #target = grad_log_pert_kernel
-                target = -1 * z
-                val_loss = torch.mean((std * score - target)**2)
-                '''
+                x = x.to(device)
+
+                val_loss, val_density_learning_loss, val_reg_loss = loss_fn(phi, psi, x, train=False, device=device)
 
                 total_val_loss += val_loss.item()
+                total_val_density_learning_loss += val_density_learning_loss.item()
+                if val_reg_loss is not None:
+                    total_val_reg_loss += val_reg_loss.item()
                 val_iterator.set_postfix(val_loss=val_loss.item())
 
         avg_val_loss = total_val_loss / len(val_loader)
+        avg_val_density_learning_loss = total_val_density_learning_loss / len(val_loader)
+        avg_val_reg_loss = total_val_reg_loss / len(val_loader) if total_val_reg_loss > 0 else 0
         writer.add_scalar("Loss/Validation", avg_val_loss, epoch)
+        writer.add_scalar(f"{loss_fn.loss_name} Validation", avg_val_density_learning_loss, epoch)
+        writer.add_scalar("Loss/Regularization Validation", avg_val_reg_loss, epoch)
 
-        print(f"Epoch {epoch+1}/{args.epochs}: Train Loss = {avg_train_loss:.4f}, Val Loss = {avg_val_loss:.4f}")
+        print(f"Epoch {epoch+1}/{config.epochs}: Train Loss = {avg_train_loss:.4f}, Val Loss = {avg_val_loss:.4f}")
 
-        # Inside your main training loop:
-        if (epoch + 1) % args.eval_log_frequency == 0:  # Adjust the interval as needed
-            check_manifold_properties(phi, psi, writer, epoch)
+        if (epoch + 1) % config.eval_log_frequency == 0:
+            check_manifold_properties(config.dataset, phi, psi, writer, epoch, device, val_loader, config.d)
         
         ema_phi.restore()
         ema_psi.restore()
-        
-        #save the model weights (both running weights and EMA weights)
-        if (epoch + 1) % args.checkpoint_frequency == 0:
-            save_model(phi, ema_phi, epoch, avg_train_loss, "Phi", checkpoint_dir, best_checkpoints)
-            save_model(psi, ema_psi, epoch, avg_train_loss, "Psi", checkpoint_dir, best_checkpoints)
 
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        if epochs_no_improve >= config.get('patience_epochs', 100):
+            print(f"Early stopping at epoch {epoch + 1} due to no improvement in validation loss for {config.patience_epochs} consecutive epochs.")
+            break
+        
+        # Checkpoint saving
+        if (epoch + 1) % config.checkpoint_frequency == 0:
+            save_model(phi, ema_phi, psi, ema_psi, epoch, avg_val_loss, 
+                       checkpoint_dir, best_checkpoints, step, 
+                       best_val_loss, epochs_no_improve, optimizer, scheduler)
 
     writer.close()
     print("Training completed.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Training with Checkpointing for Separate Models")
-
-    #logging settings
-    parser.add_argument("--base_log_dir", type=str, default="./results", help="Directory to save TensorBoard logs.")
-    parser.add_argument("--experiment", type=str, default="single_banana", help="Directory to save logs.")
-    parser.add_argument("--eval_log_frequency", type=int, default=200, help="number of epochs between successive evaluations of the method")
-
-    # Model settings
-    parser.add_argument('--base_transform_type', type=str, default='affine', help='Which base transform to use.')
-    parser.add_argument('--hidden_features', type=int, default=64, help='Number of hidden features in coupling layers.')
-    parser.add_argument('--num_transform_blocks', type=int, default=2, help='Number of blocks in coupling layer transform.')
-    parser.add_argument('--use_batch_norm', type=int, default=0, choices=[0, 1], help='Whether to use batch norm in coupling layer transform.')
-    parser.add_argument('--dropout_probability', type=float, default=0.0, help='Dropout probability for coupling transform.')
-    parser.add_argument('--num_bins', type=int, default=128, help='Number of bins in piecewise cubic coupling transform.')
-    parser.add_argument('--apply_unconditional_transform', type=int, default=0, choices=[0, 1], help='Whether to apply unconditional transform in coupling layer.')
-    parser.add_argument('--min_bin_width', type=float, default=1e-3, help='Minimum bin width for piecewise transforms.')
-    parser.add_argument('--num_flow_steps', type=int, default=2, help='Number of steps of flow.')
-
-    # Training settings
-    parser.add_argument("--epochs", type=int, default=10000, help="Number of epochs to train.")
-    parser.add_argument("--checkpoint_frequency", type=int, default=1, help="Frequency of saving the model per number of epochs.")
-    parser.add_argument("--std", type=float, default=1e-1, help="Perturbation std for denoising score matching")
-    parser.add_argument("--use_reg", action='store_true', help="Whether to use regularization for enforcing local isometry.")
-    parser.add_argument("--reg_factor", type=float, default=1, help="Factor to scale the regularization term.")
-
-    # Data handling
-    parser.add_argument("--data_path", type=str, default="./data", help="Data directory.")
-    parser.add_argument("--d", type=int, default=2, help="Dimensionality of the input space.")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training.")
-
-    # Device settings
-    parser.add_argument("--device", type=str, default="cpu", help="Device to use for computation (e.g., 'cpu', 'cuda').")
-
-    # Optimization settings
-    parser.add_argument("--learning_rate", type=float, default=0.0005, help="Learning rate for optimizer.")
-
-    # Optional loading of model checkpoints for resuming
-    parser.add_argument("--load_phi_checkpoint", type=str, default=None, help="Path to load phi model checkpoint if any.")
-    parser.add_argument("--load_psi_checkpoint", type=str, default=None, help="Path to load psi model checkpoint if any.")
-
-    # Reproducibility
-    parser.add_argument("--seed", type=int, default=1638128, help="Random seed for PyTorch and NumPy.")
-
+    import argparse
+    parser = argparse.ArgumentParser(description="Training with Config File")
+    parser.add_argument("--config", type=str, required=True, help="Path to the configuration file.")
     args = parser.parse_args()
 
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
-
-    main(args)
-
+    main(args.config)
