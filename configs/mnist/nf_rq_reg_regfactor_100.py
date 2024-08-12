@@ -1,13 +1,14 @@
 import ml_collections
 import torch
 
+#THIS CONFIG WORKS!
 def get_config():
     config = ml_collections.ConfigDict()
 
     # Logging settings
     config.base_log_dir = "./results/mnist"
     config.experiment = "NF_rq_reg_regfactor_100"
-    config.eval_log_frequency = 10
+    config.eval_log_frequency = 20
 
     # Model settings
     config.diffeomorphism_class = 'image_diffeomorphism'
@@ -31,12 +32,12 @@ def get_config():
         "min_bin_width": 0.001,
         "min_derivative": 0.001,
         "num_bins": 4,
-        "tail_bound": 3.0
+        "tail_bound": 6.0
     }
     config.dropout_prob = 0. #0.2
 
     # Training settings
-    config.epochs = 1000
+    config.epochs = 4000
     config.patience_epochs = 100
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'

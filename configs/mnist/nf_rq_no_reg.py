@@ -6,14 +6,14 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/mnist"
-    config.experiment = "NF_affine_reg_regfactor_200_std_em2"
-    config.eval_log_frequency = 10
-
+    config.experiment = "NF_rq_noreg"
+    config.eval_log_frequency = 20
+    
     # Model settings
     config.diffeomorphism_class = 'image_diffeomorphism'
     config.actnorm = True
     config.alpha = 0.05
-    config.coupling_layer_type = 'affine'
+    config.coupling_layer_type = 'rational_quadratic_spline'
     config.hidden_channels = 96
     config.levels = 3
     config.multi_scale = False
@@ -36,13 +36,13 @@ def get_config():
     config.dropout_prob = 0. #0.2
 
     # Training settings
-    config.epochs = 3000
+    config.epochs = 2500
     config.patience_epochs = 100
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'
-    config.std = 0.01 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
-    config.use_reg = True
-    config.reg_factor = 200
+    config.std = 0.1 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
+    config.use_reg = False
+    config.reg_factor = 100
     config.reg_type = 'isometry'
     config.use_cv = False
 
@@ -65,8 +65,8 @@ def get_config():
     config.optimizer = 'AdamW'
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = 'checkpoint_last'
-
+    config.checkpoint = None
+    
     # Reproducibility
     config.seed = 23
 

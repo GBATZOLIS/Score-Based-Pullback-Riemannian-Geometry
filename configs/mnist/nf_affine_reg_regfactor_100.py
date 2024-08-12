@@ -1,6 +1,7 @@
 import ml_collections
 import torch
 
+#THIS CONFIG WORKS!
 def get_config():
     config = ml_collections.ConfigDict()
 
@@ -36,7 +37,7 @@ def get_config():
     config.dropout_prob = 0. #0.2
 
     # Training settings
-    config.epochs = 1000
+    config.epochs = 4000
     config.patience_epochs = 100
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'
@@ -55,7 +56,7 @@ def get_config():
     config.h = 32 # Height
     config.w = 32 # Width
     config.d = config.c * config.h * config.w # Shape for the image data
-    config.batch_size = 256 #64
+    config.batch_size = 64
 
     # Device settings
     config.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -65,7 +66,7 @@ def get_config():
     config.optimizer = 'AdamW'
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = 'checkpoint_epoch_977_loss_-4002.491'
+    config.checkpoint = None
 
     # Reproducibility
     config.seed = 23
