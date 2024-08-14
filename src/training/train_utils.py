@@ -108,14 +108,15 @@ class WarmUpScheduler:
 
 
     
-def save_model(phi, ema_phi, psi, ema_psi, epoch, loss, checkpoint_dir, best_checkpoints, global_step, best_val_loss, epochs_no_improve, optimizer, scheduler):
-    def write_model(state_dict, path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve):
-        scheduler.step_num = global_step
+def save_model(phi, ema_phi, psi, ema_psi, epoch, loss, checkpoint_dir, best_checkpoints, global_step, best_val_loss, epochs_no_improve, optimizer, scheduler, batch_idx):
+    def write_model(state_dict, path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve, batch_idx):
+        scheduler.step_num = global_step  # Update the scheduler's step count
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': state_dict,
             'loss': loss,
-            'global_step': global_step,
+            'global_step': global_step,  # Save the current global step
+            'batch_idx': batch_idx,  # Save the current batch index
             'best_checkpoints': best_checkpoints,
             'best_val_loss': best_val_loss,
             'epochs_no_improve': epochs_no_improve,
@@ -130,20 +131,20 @@ def save_model(phi, ema_phi, psi, ema_psi, epoch, loss, checkpoint_dir, best_che
     # Save the latest model checkpoint
     last_checkpoint_path = os.path.join(checkpoint_dir, "checkpoint_last.pth")
     state_dict = {'phi': phi.state_dict(), 'psi': psi.state_dict()}
-    write_model(state_dict, last_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
+    write_model(state_dict, last_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve, batch_idx)
 
     # Save the latest EMA model checkpoint
     last_ema_checkpoint_path = os.path.join(checkpoint_dir, "checkpoint_last_EMA.pth")
     ema_state_dict = {'phi': ema_phi.shadow, 'psi': ema_psi.shadow}
-    write_model(ema_state_dict, last_ema_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
+    write_model(ema_state_dict, last_ema_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve, batch_idx)
     
     # Manage the best checkpoints
     if len(best_checkpoints) < 3:
         new_checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_loss_{loss:.3f}.pth")
         new_ema_checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_loss_{loss:.3f}_EMA.pth")
         best_checkpoints.append((new_checkpoint_path, new_ema_checkpoint_path, loss))
-        write_model(state_dict, new_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
-        write_model(ema_state_dict, new_ema_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
+        write_model(state_dict, new_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve, batch_idx)
+        write_model(ema_state_dict, new_ema_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve, batch_idx)
     else:
         worst_checkpoint = max(best_checkpoints, key=lambda x: x[2])
         if loss < worst_checkpoint[2]:
@@ -156,11 +157,12 @@ def save_model(phi, ema_phi, psi, ema_psi, epoch, loss, checkpoint_dir, best_che
             new_checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_loss_{loss:.3f}.pth")
             new_ema_checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_loss_{loss:.3f}_EMA.pth")
             best_checkpoints.append((new_checkpoint_path, new_ema_checkpoint_path, loss))
-            write_model(state_dict, new_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
-            write_model(ema_state_dict, new_ema_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve)
+            write_model(state_dict, new_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve, batch_idx)
+            write_model(ema_state_dict, new_ema_checkpoint_path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve, batch_idx)
     
     print(f"Model saved at '{last_checkpoint_path}'")
     print(f"EMA model saved at '{last_ema_checkpoint_path}'")
+
 
 def load_model(checkpoint_path, phi, ema_phi, psi, ema_psi, optimizer=None, scheduler=None, is_ema=False):
     checkpoint = torch.load(checkpoint_path)
@@ -173,7 +175,8 @@ def load_model(checkpoint_path, phi, ema_phi, psi, ema_psi, optimizer=None, sche
     
     epoch = checkpoint['epoch']
     loss = checkpoint['loss']
-    global_step = checkpoint.get('global_step', 0)
+    global_step = checkpoint.get('global_step', 0)  # Load global step
+    batch_idx = checkpoint.get('batch_idx', 0)  # Load batch index, default to 0 if not in checkpoint
     best_checkpoints = checkpoint.get('best_checkpoints', [])
     best_val_loss = checkpoint.get('best_val_loss', float('inf'))
     epochs_no_improve = checkpoint.get('epochs_no_improve', 0)
@@ -183,9 +186,10 @@ def load_model(checkpoint_path, phi, ema_phi, psi, ema_psi, optimizer=None, sche
     if scheduler and 'scheduler_state_dict' in checkpoint and scheduler is not None:
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     
-    print(f"Model {'EMA ' if is_ema else ''}loaded from '{checkpoint_path}', Epoch: {epoch}, Loss: {loss}")
+    print(f"Model {'EMA ' if is_ema else ''}loaded from '{checkpoint_path}', Epoch: {epoch}, Loss: {loss}, Global Step: {global_step}, Batch Index: {batch_idx}")
     
-    return epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve
+    return epoch, loss, global_step, batch_idx, best_checkpoints, best_val_loss, epochs_no_improve
+
 
 def save_model_weights_for_comparison(model):
     weights = {}
@@ -215,7 +219,7 @@ def resume_training(config, phi, ema_phi, psi, ema_psi, load_model_func, get_opt
         original_psi_weights = save_model_weights_for_comparison(psi)
 
         # Load models
-        epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve = load_model_func(
+        epoch, loss, global_step, batch_idx, best_checkpoints, best_val_loss, epochs_no_improve = load_model_func(
             checkpoint_path, phi, ema_phi, psi, ema_psi, optimizer, scheduler, is_ema=False
         )
         ema_checkpoint_path = checkpoint_path.replace('.pth', '_EMA.pth')
@@ -227,10 +231,11 @@ def resume_training(config, phi, ema_phi, psi, ema_psi, load_model_func, get_opt
         print(f"L2 distance for Phi model: {phi_l2_distance}")
         print(f"L2 distance for Psi model: {psi_l2_distance}")
         print(f"Resuming training from epoch {epoch + 1}")        
-        return epoch + 1, global_step, best_checkpoints, best_val_loss, epochs_no_improve, optimizer, scheduler
+        return epoch + 1, global_step, batch_idx, best_checkpoints, best_val_loss, epochs_no_improve, optimizer, scheduler
     else:
         optimizer, scheduler = get_optimizer_and_scheduler_func(list(phi.parameters()) + list(psi.parameters()), config, total_steps)
-        return 0, 0, [], float('inf'), 0, optimizer, scheduler
+        return 0, 0, 0, [], float('inf'), 0, optimizer, scheduler
+
 
 
 def get_log_density_fn(phi, psi):

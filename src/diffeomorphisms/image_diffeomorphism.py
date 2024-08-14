@@ -212,55 +212,65 @@ class core_image_diffeomorphism(Diffeomorphism):
 
 class image_diffeomorphism(core_image_diffeomorphism):
 
-    def __init__(self, args) -> None:
+    def __init__(self, args, U=None) -> None:
         super().__init__(args)
-        self.c, self.h, self.w = args.c, args.h, args.w  # Store the original shape
+        
+        # If U is provided, convert it to a Parameter with requires_grad=False to freeze it
+        if U is not None:
+            self.register_buffer('U', U)  # Register U as a buffer to keep it unlearnable
+        else:
+            self.U = None
 
-    def flatten_image(self, image_tensor):
-        # Flatten the image tensor to shape (batch_size, c*h*w)
-        return image_tensor.view(image_tensor.size(0), -1)
-
-    def unflatten_image(self, flattened_tensor):
-        # Unflatten the tensor to shape (batch_size, c, h, w)
-        return flattened_tensor.view(flattened_tensor.size(0), self.c, self.h, self.w)
-
-    def flatten_unflatten_decorator(func):
+    def premultiply_with_Ut(func):
         def wrapper(self, arg):
-            # Check if the input tensor is flattened
-            input_was_flattened = arg.dim() == 2
-            print(f'input_was_flattened: {input_was_flattened}')
+            # Flatten the input tensor (B, 1, 32, 32) -> (B, 1024)
+            original_shape = arg.shape
+            B = original_shape[0]
+            if len(original_shape) > 2:
+                arg = arg.view(B, -1)  # Flatten to (B, 1024)
             
-            # Get the device of the input tensor
-            device = arg.device
-            print(f'Input tensor size: {arg.size()}')
+            # Apply U^T * x in the forward direction
+            if self.U is not None:
+                arg = torch.matmul(arg, self.U.T)
             
-            # Unflatten if necessary and move to the same device
-            unflattened_arg = self.unflatten_image(arg.to(device)) if input_was_flattened else arg.to(device)
-            print(f'Unflattened tensor size: {unflattened_arg.size()}')
+            # Reshape back to original shape if needed
+            if len(original_shape) > 2:
+                arg = arg.view(B, *original_shape[1:])
             
-            # Call the original method
-            result = func(self, unflattened_arg)
-            print(f'Result tensor size before flattening: {result.size()}')
-            
-            # Flatten the output tensor if the input was flattened
-            result = self.flatten_image(result.to(device)) if input_was_flattened else result.to(device)
-            print(f'Result tensor size after flattening: {result.size()}')
-            
-            return result
+            return func(self, arg)
         return wrapper
 
-    #@flatten_unflatten_decorator
+    def postmultiply_with_U(func):
+        def wrapper(self, arg):
+            # Flatten the input tensor if necessary
+            original_shape = arg.shape
+            B = original_shape[0]
+            if len(original_shape) > 2:
+                arg = arg.view(B, -1)  # Flatten to (B, 1024)
+            
+            # Apply U * y in the inverse direction after the inverse transformation
+            if self.U is not None:
+                arg = torch.matmul(arg, self.U)
+            
+            # Reshape back to original shape if needed
+            if len(original_shape) > 2:
+                arg = arg.view(B, *original_shape[1:])
+            
+            return func(self, arg)
+        return wrapper
+
+    @premultiply_with_Ut
     def forward(self, x):
         return super().forward(x)
 
-    #@flatten_unflatten_decorator
+    @postmultiply_with_U
     def inverse(self, y):
         return super().inverse(y)
 
-    #@flatten_unflatten_decorator
     def differential_forward(self, x, X):
-        return super().differential_forward(x, X)
+        _, jvp_result = jvp(lambda x: self.forward(x), (x,), (X,))
+        return jvp_result
 
-    #@flatten_unflatten_decorator
     def differential_inverse(self, y, Y):
-        return super().differential_inverse(y, Y)
+        _, jvp_result = jvp(lambda y: self.inverse(y), (y,), (Y,))
+        return jvp_result

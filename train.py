@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 import os
 from src.diffeomorphisms import get_diffeomorphism
+from src.diffeomorphisms.utils import get_principal_components  # Import the PCA computation function
 from src.strongly_convex.learnable_psi import LearnablePsi
 from src.training.train_utils import EMA, load_config, load_model, save_model, resume_training, get_log_density_fn, get_score_fn, count_parameters, check_parameters_device, set_visible_gpus, set_seed, get_full_checkpoint_path
 from src.training.optim_utils import get_optimizer_and_scheduler
@@ -15,7 +16,7 @@ from torch.autograd.functional import jvp
 from src.data import get_dataset
 
 # Set which GPUs are visible
-set_visible_gpus('2')
+set_visible_gpus('1')
 
 def main(config_path):
     config = load_config(config_path)
@@ -29,8 +30,18 @@ def main(config_path):
 
     writer = SummaryWriter(log_dir=tensorboard_dir)
 
+    # DataLoader for synthetic training and validation data
+    dataset_class = get_dataset(config.dataset_class)
+    train_dataset = dataset_class(config, split='train')
+    train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+
+    # Compute PCA matrix if the flag is enabled
+    U = None
+    if config.get('premultiplication_by_U', False):
+        U = get_principal_components(train_loader)
+
     # Initialize the models
-    phi = get_diffeomorphism(config.diffeomorphism_class)(config)
+    phi = get_diffeomorphism(config, U=U)  # Pass the PCA matrix if applicable
     psi = LearnablePsi(config.d)
 
     # Print model summaries
@@ -39,10 +50,6 @@ def main(config_path):
     print(f"Model Phi - Total Parameters: {phi_total_params}, Trainable Parameters: {phi_trainable_params}")
     print(f"Model Psi - Total Parameters: {psi_total_params}, Trainable Parameters: {psi_trainable_params}")
 
-    # DataLoader for synthetic training and validation data
-    dataset_class = get_dataset(config.dataset_class)
-    train_dataset = dataset_class(config, split='train')
-    train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
     _, _, _, _ = compute_mean_distance_and_sigma(train_loader)
     plot_data(writer, train_loader, config.std, num_points=256)
 
@@ -67,12 +74,15 @@ def main(config_path):
     # Print the device of each parameter in phi
     check_parameters_device(phi)
         
-    start_epoch, step, best_checkpoints, best_val_loss, epochs_no_improve, optimizer, scheduler = resume_training(
+    start_epoch, step, batch_idx, best_checkpoints, best_val_loss, epochs_no_improve, optimizer, scheduler = resume_training(
         config, phi, ema_phi, psi, ema_psi, load_model, get_optimizer_and_scheduler, total_steps, train_loader
     )
 
     # Get the appropriate loss function
     loss_fn = get_loss_function(config)
+
+    # Flag to check if it's the first epoch after resuming
+    first_epoch_after_resume = True
 
     # Training and Validation loop
     for epoch in range(start_epoch, config.epochs):
@@ -83,7 +93,11 @@ def main(config_path):
         total_loss = 0
         total_density_learning_loss = 0
         total_reg_loss = 0
-        for data in train_iterator:
+        for i, data in enumerate(train_iterator):
+            # If resuming from a checkpoint, skip batches in the first epoch
+            if first_epoch_after_resume and i < batch_idx:
+                continue  # Skip batches until we reach the saved batch index
+
             if isinstance(data, list):
                 x = data[0]
             else:
@@ -119,6 +133,10 @@ def main(config_path):
             if reg_loss is not None:
                 total_reg_loss += reg_loss.item()
 
+        # Reset batch_idx and the first_epoch_after_resume flag after the first resumed epoch
+        batch_idx = 0
+        first_epoch_after_resume = False
+        
         avg_train_loss = total_loss / len(train_loader)
         avg_train_density_learning_loss = total_density_learning_loss / len(train_loader)
         avg_train_reg_loss = total_reg_loss / len(train_loader) if total_reg_loss > 0 else 0
@@ -180,10 +198,10 @@ def main(config_path):
             break
         
         # Checkpoint saving
-        if (epoch + 1) % config.checkpoint_frequency == 0:
-            save_model(phi, ema_phi, psi, ema_psi, epoch, avg_val_loss, 
-                       checkpoint_dir, best_checkpoints, step, 
-                       best_val_loss, epochs_no_improve, optimizer, scheduler)
+    if (epoch + 1) % config.checkpoint_frequency == 0:
+        save_model(phi, ema_phi, psi, ema_psi, epoch, avg_val_loss, 
+                checkpoint_dir, best_checkpoints, step, 
+                best_val_loss, epochs_no_improve, optimizer, scheduler, batch_idx)
 
     writer.close()
     print("Training completed.")

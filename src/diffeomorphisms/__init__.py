@@ -1,12 +1,26 @@
 import torch.nn as nn
 import importlib
+from .utils import get_principal_components
 
-def get_diffeomorphism(diffeomorphism_class):
-    dataset_class_name = diffeomorphism_class
+def get_diffeomorphism(config, U=None):
+    """
+    Returns the diffeomorphism class with optional PCA pre-multiplication.
+    
+    Args:
+        diffeomorphism_class (str): The name of the diffeomorphism class to be loaded.
+        config (ConfigDict): The configuration dictionary.
+        U (torch.Tensor, optional): The PCA matrix to be used for pre-multiplication.
+    
+    Returns:
+        Diffeomorphism class instance.
+    """
+    dataset_class_name = config.diffeomorphism_class
     module_name = f'src.diffeomorphisms.{dataset_class_name.lower()}'
     module = importlib.import_module(module_name)
     dataset_class = getattr(module, dataset_class_name)
-    return dataset_class
+
+    # Pass the PCA matrix U to the diffeomorphism class
+    return dataset_class(config, U=U)
 
 class Diffeomorphism(nn.Module):
     """ 
