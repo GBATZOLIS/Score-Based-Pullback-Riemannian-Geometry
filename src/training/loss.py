@@ -66,7 +66,7 @@ def regularisation_term(reg_type, phi, x, train, device):
 
         if not train:
             torch.set_grad_enabled(False)
-            
+        
         norms = Jv.view(batch_size, -1).norm(dim=1)
         return torch.mean((norms - 1) ** 2)
     elif reg_type == 'volume':

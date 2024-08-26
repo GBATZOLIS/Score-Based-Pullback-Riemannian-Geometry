@@ -106,7 +106,7 @@ def create_transform_step(num_channels, hidden_channels, actnorm, coupling_layer
 
     return transforms.CompositeTransform(step_transforms)
 
-def create_transform(c, h, w, levels, hidden_channels, steps_per_level, alpha, num_bits, preprocessing, multi_scale, coupling_layer_type, spline_params, use_resnet, num_res_blocks, resnet_batchnorm, dropout_prob, actnorm):
+def create_transform(c, h, w, levels, hidden_channels, steps_per_level, alpha, num_bits, preprocessing, multi_scale, coupling_layer_type, spline_params, use_resnet, num_res_blocks, resnet_batchnorm, dropout_prob, actnorm, U, mean):
     if not isinstance(hidden_channels, list):
         hidden_channels = [hidden_channels] * levels
 
@@ -127,6 +127,7 @@ def create_transform(c, h, w, levels, hidden_channels, steps_per_level, alpha, n
                 c, h, w = new_shape
     else:
         all_transforms = []
+        all_transforms.append(transforms.PrincipalRotationTransform(U=U, mean=mean))
 
         for level, level_hidden_channels in zip(range(levels), hidden_channels):
             squeeze_transform = transforms.SqueezeTransform()
@@ -171,9 +172,8 @@ def create_transform(c, h, w, levels, hidden_channels, steps_per_level, alpha, n
         return transforms.CompositeTransform([mct])
 
 
-class core_image_diffeomorphism(Diffeomorphism):
-
-    def __init__(self, args) -> None:
+class image_diffeomorphism(Diffeomorphism):
+    def __init__(self, args, U=None, mean=None) -> None:
         super().__init__(args.d)
         self.args = args
         self._transform = create_transform(
@@ -191,7 +191,9 @@ class core_image_diffeomorphism(Diffeomorphism):
             num_res_blocks=args.num_res_blocks,
             resnet_batchnorm=args.resnet_batchnorm,
             dropout_prob=args.dropout_prob,
-            actnorm=args.actnorm
+            actnorm=args.actnorm, 
+            U=U,
+            mean=mean
         )
 
     def forward(self, x):
@@ -208,69 +210,4 @@ class core_image_diffeomorphism(Diffeomorphism):
 
     def differential_inverse(self, y, Y):
         _, jvp_result = jvp(lambda y: self._transform.inverse(y, context=None)[0], (y,), (Y,))
-        return jvp_result
-
-class image_diffeomorphism(core_image_diffeomorphism):
-
-    def __init__(self, args, U=None) -> None:
-        super().__init__(args)
-        
-        # If U is provided, convert it to a Parameter with requires_grad=False to freeze it
-        if U is not None:
-            self.register_buffer('U', U)  # Register U as a buffer to keep it unlearnable
-        else:
-            self.U = None
-
-    def premultiply_with_Ut(func):
-        def wrapper(self, arg):
-            # Flatten the input tensor (B, 1, 32, 32) -> (B, 1024)
-            original_shape = arg.shape
-            B = original_shape[0]
-            if len(original_shape) > 2:
-                arg = arg.view(B, -1)  # Flatten to (B, 1024)
-            
-            # Apply U^T * x in the forward direction
-            if self.U is not None:
-                arg = torch.matmul(arg, self.U.T)
-            
-            # Reshape back to original shape if needed
-            if len(original_shape) > 2:
-                arg = arg.view(B, *original_shape[1:])
-            
-            return func(self, arg)
-        return wrapper
-
-    def postmultiply_with_U(func):
-        def wrapper(self, arg):
-            # Flatten the input tensor if necessary
-            original_shape = arg.shape
-            B = original_shape[0]
-            if len(original_shape) > 2:
-                arg = arg.view(B, -1)  # Flatten to (B, 1024)
-            
-            # Apply U * y in the inverse direction after the inverse transformation
-            if self.U is not None:
-                arg = torch.matmul(arg, self.U)
-            
-            # Reshape back to original shape if needed
-            if len(original_shape) > 2:
-                arg = arg.view(B, *original_shape[1:])
-            
-            return func(self, arg)
-        return wrapper
-
-    @premultiply_with_Ut
-    def forward(self, x):
-        return super().forward(x)
-
-    @postmultiply_with_U
-    def inverse(self, y):
-        return super().inverse(y)
-
-    def differential_forward(self, x, X):
-        _, jvp_result = jvp(lambda x: self.forward(x), (x,), (X,))
-        return jvp_result
-
-    def differential_inverse(self, y, Y):
-        _, jvp_result = jvp(lambda y: self.inverse(y), (y,), (Y,))
         return jvp_result

@@ -8,7 +8,7 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/single_banana"
-    config.experiment = "no_vr_reg"
+    config.experiment = "no_vr_reg_U"
     config.eval_log_frequency = 100
 
     # Model settings
@@ -22,13 +22,17 @@ def get_config():
     config.apply_unconditional_transform = 0
     config.min_bin_width = 1e-3
     config.num_flow_steps = 2
+    config.premultiplication_by_U = True # new flag for premultiplication by U.T
 
     # Training settings
-    config.epochs = 2000
+    config.epochs = 4000
+    config.patience_epochs = 250
     config.checkpoint_frequency = 1
-    config.std = 1e-1
+    config.loss = 'normalizing flow'
+    config.std = 0.1 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
     config.use_reg = True
-    config.reg_factor = 1.0
+    config.reg_factor = 1
+    config.reg_type = 'isometry'
     config.use_cv = False
 
     # Data settings
@@ -45,8 +49,7 @@ def get_config():
     config.learning_rate = 0.0005
 
     # Optional loading of model checkpoints for resuming
-    config.load_phi_checkpoint = None
-    config.load_psi_checkpoint = None
+    config.checkpoint = None
 
     # Reproducibility
     config.seed = 1638128

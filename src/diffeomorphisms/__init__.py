@@ -2,7 +2,7 @@ import torch.nn as nn
 import importlib
 from .utils import get_principal_components
 
-def get_diffeomorphism(config, U=None):
+def get_diffeomorphism(config, U=None, mean=None):
     """
     Returns the diffeomorphism class with optional PCA pre-multiplication.
     
@@ -20,7 +20,7 @@ def get_diffeomorphism(config, U=None):
     dataset_class = getattr(module, dataset_class_name)
 
     # Pass the PCA matrix U to the diffeomorphism class
-    return dataset_class(config, U=U)
+    return dataset_class(config, U=U, mean=mean)
 
 class Diffeomorphism(nn.Module):
     """ 

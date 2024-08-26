@@ -8,7 +8,7 @@ def get_config():
     # Logging settings
     config.base_log_dir = "./results/mnist"
     config.experiment = "NF_affine_reg_regfactor_100_U"
-    config.eval_log_frequency = 20
+    config.eval_log_frequency = 10
 
     # Model settings
     config.diffeomorphism_class = 'image_diffeomorphism'
@@ -20,7 +20,7 @@ def get_config():
     config.multi_scale = False
     config.num_bits = 8
     config.num_res_blocks = 3
-    config.preprocessing = None
+    config.preprocessing = None #it has to be None
 
     config.use_resnet = True
     config.resnet_batchnorm = False

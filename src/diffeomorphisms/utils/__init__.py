@@ -32,7 +32,7 @@ def get_principal_components(train_loader):
     
     # Collect all data into a single tensor
     for batch in train_loader:
-        x = batch[0]
+        x = batch[0] if isinstance(batch, list) else batch
         x_flat = x.view(x.size(0), -1)  # Flatten the images
         data.append(x_flat)
     
@@ -45,5 +45,5 @@ def get_principal_components(train_loader):
     # Compute SVD on the centered data
     U, S, Vh = torch.linalg.svd(data_centered, full_matrices=False)
     
-    # Return all principal components
-    return Vh.T  # Return U as transposed to align with the format expected in PCA
+    # Return the principal components and the mean
+    return Vh.T, mean.squeeze(0)  # Return U and the mean

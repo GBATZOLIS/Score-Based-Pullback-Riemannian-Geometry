@@ -68,28 +68,31 @@ def get_base_transform_fn(args):
     return create_base_transform
         
 class euclidean_diffeomorphism(Diffeomorphism):
-
-    def __init__(self, args) -> None:
+    def __init__(self, args, U=None, mean=None) -> None:
         super().__init__(args.d)
 
         self.args = args
+
+        # Initialize the composite transform with the new linear transform at the beginning
         self._transform = transforms.CompositeTransform([
-                        get_base_transform_fn(args)(i) for i in range(args.num_flow_steps)
-                    ])
+            transforms.PrincipalRotationTransform(U=U, mean=mean),
+            *[get_base_transform_fn(args)(i) for i in range(args.num_flow_steps)]
+        ])
 
     def forward(self, x):
         """
-        :param x: N x 2
-        :return: N x 2
+        Forward pass through the diffeomorphism.
+        :param x: Input tensor, shape (B, C, H, W) or (B, D)
+        :return: Transformed tensor
         """
         out, logabsdetjacobian = self._transform(x, context=None)
-        
         return out
 
     def inverse(self, y):
         """
-        :param y: N x 2
-        :return: N x 2
+        Inverse pass through the diffeomorphism.
+        :param y: Input tensor, shape (B, C, H, W) or (B, D)
+        :return: Inverse-transformed tensor
         """
         out, logabsdetjacobian = self._transform.inverse(y, context=None)
         return out
@@ -103,7 +106,7 @@ class euclidean_diffeomorphism(Diffeomorphism):
         :return: A batch of transformed tangent vectors, N x 2.
         """
 
-        #jvp: is a fast pytorch implementation of the jacobian vector product.
+        # jvp: is a fast pytorch implementation of the jacobian vector product.
         _, jvp_result = jvp(lambda x: self._transform(x, context=None)[0], (x,), (X,))
         return jvp_result
 
