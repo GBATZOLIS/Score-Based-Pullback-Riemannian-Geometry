@@ -3,6 +3,8 @@ import torch.optim as optim
 
 import matplotlib.pyplot as plt
 
+from src.geodesic_solvers.boundary_value.discrete import DiscreteBoundaryValueGeodesicSolver
+from src.geodesic_solvers.initial_value.discrete import DiscreteInitialValueGeodesicSolver
 from src.manifolds import Manifold
 from src.manifolds.euclidean import Euclidean
 
@@ -148,223 +150,311 @@ class DiscreteTimeManifold(Manifold):
         metric_tensor_x = self.metric_tensor(x)
         return torch.einsum("Nab,NMa,NLb->NML", metric_tensor_x, X, Y)
 
-    
-    def geodesic(self, x, y, t):
+    def geodesic(self, x, y, t, num_intervals=10, num_time_points=200, num_epochs=1000, lr=1e-4, initialize=True, num_sines=1):
         """
-
+        Discrete geodesic approximation
         :param x: d
         :param y: d
         :param t: N
         :return: N x d
         """
-        N = t.shape[0]
+        geodesic_solver = DiscreteBoundaryValueGeodesicSolver(x, y, self.norm, 
+                                                              num_intervals=num_intervals, num_time_points=num_time_points, num_epochs=num_epochs, lr=lr,
+                                                              initialize=initialize, num_sines=num_sines)
+        geodesic_solver.solve()
+        return geodesic_solver.geodesic(t).detach()
 
-        if self.L1 > 1: # compute discrete geodesics 
-            Z = self.boundary_value_discrete_geodesic(x, y[None])[0]
-
-
-            plt.scatter(Z[:,0], Z[:,1])
-            plt.show()
-
-            # compute continuous time geodesics
-            Y = torch.zeros((N,self.d))
-            for i,tau in enumerate(t):
-                if tau < 1/self.L1:
-                    Y[i] = tau * (Z[0] - x) + x
-                elif tau >= (self.L1 -1)/self.L1:
-                    Y[i] = (1 - (1 - tau) * self.L1) * (y - Z[-1]) + Z[-1]
-                else:
-                    j = torch.floor(tau * self.L1).int()
-                    Y[i] = (tau * self.L1 - j) * (Z[j] - Z[j-1]) + Z[j-1]
-
-            return  Y
-        else: # compute straight line between end points
-            return Euclidean(self.d).geodesic(x,y,t)
-
-    def log(self, x, y):
+    def log(self, x, y, num_intervals=10, num_time_points=200, num_epochs=1000, lr=1e-4, initialize=True, num_sines=1):
         """
-
+        Discrete geodesic approximation
         :param x: d
         :param y: N x d
         :return: N x d
         """
-        if self.L1 > 1: # compute discrete geodesics 
-            Z = self.boundary_value_discrete_geodesic(x, y)
+        N, _ = y.shape 
+        logs = torch.zeros_like(y)
+        for i in range(N):
+            geodesic_solver = DiscreteBoundaryValueGeodesicSolver(x, y[i], self.norm, 
+                                                                  num_intervals=num_intervals, num_time_points=num_time_points, num_epochs=num_epochs, lr=lr, 
+                                                                  initialize=initialize, num_sines=num_sines)
+            geodesic_solver.solve()
+            logs[i] = geodesic_solver.geodesic.differential_forward(torch.zeros(1))
+        return logs.detach()
 
-            # DEBUG
-            N, _ = y.shape
-            for i in range(N):
-                plt.scatter(Z[i,:,0], Z[i,:,1])
-            plt.show()
-
-            return self.L1 * (Z[:,0] - x[None])
-        else: # compute straight line between end points
-            return Euclidean(self.d).log(x,y)
-
-    def exp(self, x, X):
+    def exp(self, x, X, num_intervals=200):
         """
-        
+        Discrete geodesic approximation
         :param x: d
         :param X: N x d
         :return: N x d
         """
-        if self.L2 > 1: # compute discrete geodesics 
-            return self.initial_value_discrete_geodesic(x, X)
-        else: # compute straight line between end points
-            return Euclidean(self.d).exp(x,X)
+        N, _ = X.shape 
+        exps = torch.zeros_like(X)
+        for i in range(N):
+            geodesic_solver = DiscreteInitialValueGeodesicSolver(x, X[i], self.norm, self.metric_tensor, self.gradient_metric_tensor, num_intervals=num_intervals)
+            geodesic_solver.solve()
+            exps[i] = geodesic_solver.geodesic(torch.ones(1))
+        return exps.detach()
     
-    def distance(self, x, y):
+    def distance(self, x, y, num_intervals=10, num_time_points=200, num_epochs=1000, lr=1e-4, initialize=True, num_sines=1):
         """
-
+        Summed segment length of discrete geodesic approximation
         :param x: N x M x d
         :param y: N x L x d
         :return: N x M x L
         """
-        if self.L1 > 1: # TODO
-            raise NotImplementedError(
-                "Subclasses should implement this"
-            )
-        else:
-            N, M, _ = x.shape
-            _, L, _ = y.shape
-            distances = torch.zeros((N,M,L))
-            for i in range(M):
-                g_i = self.metric_tensor(x[:,i])
-                for j in range(L):
-                    distances[:,i,j] = torch.sqrt(torch.einsum("Nab,Na,Nb->N", g_i, y[:,j] - x[:,i], y[:,j] - x[:,i]))
-            return distances
+        N, M, _ = x.shape 
+        N, L, _ = y.shape 
+        distances = torch.zeros(N,M,L)
+        for i in range(N):
+            for j in range(M):
+                for k in range(L):
+                    geodesic_solver = DiscreteBoundaryValueGeodesicSolver(x[i,j], y[i,k], self.norm, 
+                                                                          num_intervals=num_intervals, num_time_points=num_time_points, num_epochs=num_epochs, lr=lr, 
+                                                                          initialize=initialize, num_sines=num_sines)
+                    geodesic_solver.solve()
+                    geodesic_t = geodesic_solver.geodesic(torch.linspace(0.,1.,200))
+                    distances[i,j,k] = torch.sum(self.norm(geodesic_t[0:-1], (geodesic_t[1:] - geodesic_t[0:-1])[:,None]))
+        return distances.detach()
 
-    def parallel_transport(self, x, X, y):
+    def parallel_transport(self, x, X, y, num_bv_intervals=10, num_bv_time_points=200, num_bv_epochs=1000, bv_lr=1e-4, num_iv_intervals=200, initialize=True, num_sines=1): # TODO add iv parameters
         """
-
+        Pole ladder approximation
         :param x: d
         :param X: N x d
         :param y: d
         :return: N x d
         """
-        if self.L1 > 1: # TODO
-            raise NotImplementedError(
-                "Subclasses should implement this"
-            )
-        else:
-            return Euclidean(self.d).parallel_transport(x,X,y)
+        m = self.geodesic(x, y, 0.5 * torch.ones(1), 
+                          num_intervals=num_bv_intervals, num_time_points=num_bv_time_points, num_epochs=num_bv_epochs, lr=bv_lr,
+                          initialize=initialize, num_sines=num_sines)[0]
+        p = self.exp(x, X, num_intervals=num_iv_intervals)
+        D = - self.log(m, p, 
+                       num_intervals=num_bv_intervals, num_time_points=num_bv_time_points, num_epochs=num_bv_epochs, lr=bv_lr,
+                       initialize=initialize, num_sines=num_sines)
+        q = self.exp(m, D, num_intervals=num_iv_intervals)
+        Y = - self.log(y, q, 
+                       num_intervals=num_bv_intervals, num_time_points=num_bv_time_points, num_epochs=num_bv_epochs, lr=bv_lr,
+                       initialize=initialize, num_sines=num_sines)
+        return Y
+
+
+    # def geodesic(self, x, y, t):
+    #     """
+
+    #     :param x: d
+    #     :param y: d
+    #     :param t: N
+    #     :return: N x d
+    #     """
+    #     N = t.shape[0]
+
+    #     if self.L1 > 1: # compute discrete geodesics 
+    #         Z = self.boundary_value_discrete_geodesic(x, y[None])[0]
+
+
+    #         plt.scatter(Z[:,0], Z[:,1])
+    #         plt.show()
+
+    #         # compute continuous time geodesics
+    #         Y = torch.zeros((N,self.d))
+    #         for i,tau in enumerate(t):
+    #             if tau < 1/self.L1:
+    #                 Y[i] = tau * (Z[0] - x) + x
+    #             elif tau >= (self.L1 -1)/self.L1:
+    #                 Y[i] = (1 - (1 - tau) * self.L1) * (y - Z[-1]) + Z[-1]
+    #             else:
+    #                 j = torch.floor(tau * self.L1).int()
+    #                 Y[i] = (tau * self.L1 - j) * (Z[j] - Z[j-1]) + Z[j-1]
+
+    #         return  Y
+    #     else: # compute straight line between end points
+    #         return Euclidean(self.d).geodesic(x,y,t)
+
+    # def log(self, x, y):
+    #     """
+
+    #     :param x: d
+    #     :param y: N x d
+    #     :return: N x d
+    #     """
+    #     if self.L1 > 1: # compute discrete geodesics 
+    #         Z = self.boundary_value_discrete_geodesic(x, y)
+
+    #         # DEBUG
+    #         N, _ = y.shape
+    #         for i in range(N):
+    #             plt.scatter(Z[i,:,0], Z[i,:,1])
+    #         plt.show()
+
+    #         return self.L1 * (Z[:,0] - x[None])
+    #     else: # compute straight line between end points
+    #         return Euclidean(self.d).log(x,y)
+
+    # def exp(self, x, X):
+    #     """
+        
+    #     :param x: d
+    #     :param X: N x d
+    #     :return: N x d
+    #     """
+    #     if self.L2 > 1: # compute discrete geodesics 
+    #         return self.initial_value_discrete_geodesic(x, X)
+    #     else: # compute straight line between end points
+    #         return Euclidean(self.d).exp(x,X)
+    
+    # def distance(self, x, y):
+    #     """
+
+    #     :param x: N x M x d
+    #     :param y: N x L x d
+    #     :return: N x M x L
+    #     """
+    #     if self.L1 > 1: # TODO
+    #         raise NotImplementedError(
+    #             "Subclasses should implement this"
+    #         )
+    #     else:
+    #         N, M, _ = x.shape
+    #         _, L, _ = y.shape
+    #         distances = torch.zeros((N,M,L))
+    #         for i in range(M):
+    #             g_i = self.metric_tensor(x[:,i])
+    #             for j in range(L):
+    #                 distances[:,i,j] = torch.sqrt(torch.einsum("Nab,Na,Nb->N", g_i, y[:,j] - x[:,i], y[:,j] - x[:,i]))
+    #         return distances
+
+    # def parallel_transport(self, x, X, y):
+    #     """
+
+    #     :param x: d
+    #     :param X: N x d
+    #     :param y: d
+    #     :return: N x d
+    #     """
+    #     if self.L1 > 1: # TODO
+    #         raise NotImplementedError(
+    #             "Subclasses should implement this"
+    #         )
+    #     else:
+    #         return Euclidean(self.d).parallel_transport(x,X,y)
         
     
-    def boundary_value_discrete_geodesic(self, x, y): # TODO allow for initialisation Z0 + consider Newton for last steps
-        """
-        Use Riemannian gradient descent
-        :param x: d
-        :param y: N x d
-        :return: N x L x d
-        """
-        N, _ = y.shape
-        tau = torch.linspace(0.,1.,self.L1+1)
-        Z = ((1 - tau[None,:,None]) * x[None,None] + tau[None,:,None] * y[:,None])[:,1:-1].requires_grad_()
+    # def boundary_value_discrete_geodesic(self, x, y): # TODO allow for initialisation Z0 + consider Newton for last steps
+    #     """
+    #     Use Riemannian gradient descent
+    #     :param x: d
+    #     :param y: N x d
+    #     :return: N x L x d
+    #     """
+    #     N, _ = y.shape
+    #     tau = torch.linspace(0.,1.,self.L1+1)
+    #     Z = ((1 - tau[None,:,None]) * x[None,None] + tau[None,:,None] * y[:,None])[:,1:-1].requires_grad_()
         
-        k = 0
-        validation_0 = 0.
-        while k < self.max_iter1: 
-            # compute loss components
-            losses = torch.zeros(N,self.L1)
-            losses[:,0] = self.norm(x[None], Z[None,:,0] - x[None,None])**2
-            losses[:,-1] = self.norm(Z[:,-1], y[:,None] - Z[:,-1,None])[:,0]**2
-            losses[:,1:-1] = self.norm(Z[:,:-1].reshape(-1,self.d), Z[:,1:].reshape(-1,1,self.d) - Z[:,:-1].reshape(-1,1,self.d)).reshape(N,self.L1-2)**2
+    #     k = 0
+    #     validation_0 = 0.
+    #     while k < self.max_iter1: 
+    #         # compute loss components
+    #         losses = torch.zeros(N,self.L1)
+    #         losses[:,0] = self.norm(x[None], Z[None,:,0] - x[None,None])**2
+    #         losses[:,-1] = self.norm(Z[:,-1], y[:,None] - Z[:,-1,None])[:,0]**2
+    #         losses[:,1:-1] = self.norm(Z[:,:-1].reshape(-1,self.d), Z[:,1:].reshape(-1,1,self.d) - Z[:,:-1].reshape(-1,1,self.d)).reshape(N,self.L1-2)**2
     
-            # compute loss and validation
-            loss = 1/2 * torch.sum(losses)
-            validation = self.L1 * torch.sum(losses,1) - torch.sum(torch.sqrt(losses),1)**2
-            if k == 0:
-                validation_0 = validation.clone().max()
+    #         # compute loss and validation
+    #         loss = 1/2 * torch.sum(losses)
+    #         validation = self.L1 * torch.sum(losses,1) - torch.sum(torch.sqrt(losses),1)**2
+    #         if k == 0:
+    #             validation_0 = validation.clone().max()
 
-            if validation.max() / (validation_0 + 1e-8) < self.tol1:
-                break
+    #         if validation.max() / (validation_0 + 1e-8) < self.tol1:
+    #             break
 
-            # compute Riemannian gradients
-            loss.backward()
-            gradient = Z.grad
-            inverse_metric_tensor_Z = self.inverse_metric_tensor(Z.reshape(-1,self.d)).reshape((N,self.L1-1,self.d,self.d))
-            Riemannian_gradient_Z = torch.einsum("NLab,NLb->NLa", inverse_metric_tensor_Z, gradient)
+    #         # compute Riemannian gradients
+    #         loss.backward()
+    #         gradient = Z.grad
+    #         inverse_metric_tensor_Z = self.inverse_metric_tensor(Z.reshape(-1,self.d)).reshape((N,self.L1-1,self.d,self.d))
+    #         Riemannian_gradient_Z = torch.einsum("NLab,NLb->NLa", inverse_metric_tensor_Z, gradient)
 
-            # update iterates
-            with torch.no_grad():  # Disable gradient tracking for parameter updates
-                Z -= self.step_size1 * Riemannian_gradient_Z
-            Z.grad.zero_()  # Zero gradients manually
+    #         # update iterates
+    #         with torch.no_grad():  # Disable gradient tracking for parameter updates
+    #             Z -= self.step_size1 * Riemannian_gradient_Z
+    #         Z.grad.zero_()  # Zero gradients manually
             
-            if k % 1000 == 0: # geodesic discrepancy loss
-                print(f"Epoch {k}, Loss {loss.item()} | Validation: {(validation.max().item())/ (validation_0.item() + 1e-8)}")
+    #         if k % 1000 == 0: # geodesic discrepancy loss
+    #             print(f"Epoch {k}, Loss {loss.item()} | Validation: {(validation.max().item())/ (validation_0.item() + 1e-8)}")
 
-            k += 1
+    #         k += 1
 
-        return Z.detach()
+    #     return Z.detach()
     
-    def initial_value_discrete_geodesic(self, x, X):
-        """
-        Use Newton Raphson for inner iteration
-        :param x: d
-        :param X: N x d
-        :return: N x d
-        """
-        N, _ = X.shape
+    # def initial_value_discrete_geodesic(self, x, X):
+    #     """
+    #     Use Newton Raphson for inner iteration
+    #     :param x: d
+    #     :param X: N x d
+    #     :return: N x d
+    #     """
+    #     N, _ = X.shape
 
-        y0 = x[None] * torch.ones(N)[:,None]
-        y1 = x[None] + 1/self.L2 * X
+    #     y0 = x[None] * torch.ones(N)[:,None]
+    #     y1 = x[None] + 1/self.L2 * X
 
-        Z = torch.zeros(N,self.L2+1,self.d)
-        Z[:,0] = y0
-        Z[:,1] = y1
+    #     Z = torch.zeros(N,self.L2+1,self.d)
+    #     Z[:,0] = y0
+    #     Z[:,1] = y1
 
-        for l in range(self.L2-1):
-            # print(f"iteration {l+2}")
-            y2 = y1.clone()
+    #     for l in range(self.L2-1):
+    #         # print(f"iteration {l+2}")
+    #         y2 = y1.clone()
 
-            y0 = y0.detach()
-            y1.requires_grad_()
-            y2.requires_grad_()
+    #         y0 = y0.detach()
+    #         y1.requires_grad_()
+    #         y2.requires_grad_()
 
-            k = 0
-            error_0 = 0.
-            while k < self.max_iter2: 
-                # compute gradient and jacobian components
-                metric_tensor_y0 = self.metric_tensor(y0)
-                metric_tensor_y1 = self.metric_tensor(y1)
-                gradient_metric_tensor_y1 = self.gradient_metric_tensor(y1)
+    #         k = 0
+    #         error_0 = 0.
+    #         while k < self.max_iter2: 
+    #             # compute gradient and jacobian components
+    #             metric_tensor_y0 = self.metric_tensor(y0)
+    #             metric_tensor_y1 = self.metric_tensor(y1)
+    #             gradient_metric_tensor_y1 = self.gradient_metric_tensor(y1)
 
-                # compute gradient terms
-                term_1 = torch.einsum("Nab,Nb->Na", metric_tensor_y1, y1 - y2)
-                term_2 = 1/2 * torch.einsum("Ncba,Nc,Nb->Na", gradient_metric_tensor_y1, y1 - y2, y1 - y2)
-                term_3 = torch.einsum("Nab,Nb->Na", metric_tensor_y0, y1 - y0)
+    #             # compute gradient terms
+    #             term_1 = torch.einsum("Nab,Nb->Na", metric_tensor_y1, y1 - y2)
+    #             term_2 = 1/2 * torch.einsum("Ncba,Nc,Nb->Na", gradient_metric_tensor_y1, y1 - y2, y1 - y2)
+    #             term_3 = torch.einsum("Nab,Nb->Na", metric_tensor_y0, y1 - y0)
 
-                # compute full gradients
-                Fy =  term_1 + term_2 + term_3
-                if k == 0:
-                    error_0 = torch.norm(Fy.clone(),2,-1).max()
+    #             # compute full gradients
+    #             Fy =  term_1 + term_2 + term_3
+    #             if k == 0:
+    #                 error_0 = torch.norm(Fy.clone(),2,-1).max()
 
-                error = torch.norm(Fy,2,-1).max()
-                if error / error_0 < self.tol2:
-                    break
+    #             error = torch.norm(Fy,2,-1).max()
+    #             if error / error_0 < self.tol2:
+    #                 break
                 
-                # compute jacobian terms
-                term_1_gradient_y2 = - metric_tensor_y1
-                term_2_gradient_y2 = torch.einsum("Ncba,Nb->Nab", gradient_metric_tensor_y1, y2 - y1)
+    #             # compute jacobian terms
+    #             term_1_gradient_y2 = - metric_tensor_y1
+    #             term_2_gradient_y2 = torch.einsum("Ncba,Nb->Nab", gradient_metric_tensor_y1, y2 - y1)
 
-                #compute full jacobian
-                J = term_1_gradient_y2 + term_2_gradient_y2
+    #             #compute full jacobian
+    #             J = term_1_gradient_y2 + term_2_gradient_y2
 
-                # solve linear systems
-                s = torch.linalg.solve(J, -Fy)
+    #             # solve linear systems
+    #             s = torch.linalg.solve(J, -Fy)
 
-                # update y2
-                y2 = y2 + s
+    #             # update y2
+    #             y2 = y2 + s
 
-                k += 1
-            y0 = y1
-            y1 = y2
-            Z[:,l+2] = y2.detach()
+    #             k += 1
+    #         y0 = y1
+    #         y1 = y2
+    #         Z[:,l+2] = y2.detach()
 
-        # DEBUG
-        plt.scatter(Z[0,:,0], Z[0,:,1])
-        plt.show()
+    #     # DEBUG
+    #     plt.scatter(Z[0,:,0], Z[0,:,1])
+    #     plt.show()
         
-        return y2
+    #     return y2
     
     

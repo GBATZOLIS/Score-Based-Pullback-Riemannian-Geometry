@@ -53,7 +53,7 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
                                    self.dsg.phi.differential_forward((x[:,None] * torch.ones(L)[None,:,None]).reshape(-1,self.d), Y.reshape(-1,self.d)).reshape(Y.shape)
                                    )
     
-    def geodesic(self, x, y, t):
+    def geodesic(self, x, y, t, num_intervals=10, num_time_points=200, num_epochs=1000, lr=1e-4, initialize=True, num_sines=1):
         """
 
         :param x: d
@@ -61,9 +61,11 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
         :param t: N
         :return: N x d
         """
-        return self.dsg.phi.inverse(self.manifold.geodesic(self.dsg.phi.forward(x[None])[0], self.dsg.phi.forward(y[None])[0], t))
+        return self.dsg.phi.inverse(self.manifold.geodesic(self.dsg.phi.forward(x[None])[0], self.dsg.phi.forward(y[None])[0], t, 
+                                                           num_intervals=num_intervals, num_time_points=num_time_points, num_epochs=num_epochs, lr=lr, 
+                                                           initialize=initialize, num_sines=num_sines))
 
-    def log(self, x, y):
+    def log(self, x, y, num_intervals=10, num_time_points=200, num_epochs=1000, lr=1e-4, initialize=True, num_sines=1):
         """
 
         :param x: d
@@ -72,10 +74,12 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
         """
         N, _ = y.shape
         return self.dsg.phi.differential_inverse(self.dsg.phi.forward(x[None]) * torch.ones(N)[:,None],
-                                                self.manifold.log(self.dsg.phi.forward(x[None])[0], self.dsg.phi.forward(y))
+                                                self.manifold.log(self.dsg.phi.forward(x[None])[0], self.dsg.phi.forward(y),
+                                                                  num_intervals=num_intervals, num_time_points=num_time_points, num_epochs=num_epochs, lr=lr, 
+                                                                  initialize=initialize, num_sines=num_sines)
                                                 )
 
-    def exp(self, x, X):
+    def exp(self, x, X, num_intervals=200):
         """
 
         :param x: d
@@ -83,18 +87,20 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
         :return: N x d
         """
         N, _ = X.shape
-        return self.dsg.phi.inverse(self.manifold.exp(self.dsg.phi.forward(x[None])[0], self.dsg.phi.differential_forward(x[None] * torch.ones(N)[:,None], X)))
+        return self.dsg.phi.inverse(self.manifold.exp(self.dsg.phi.forward(x[None])[0], self.dsg.phi.differential_forward(x[None] * torch.ones(N)[:,None], X), num_intervals=num_intervals))
     
-    def distance(self, x, y):
+    def distance(self, x, y, num_intervals=10, num_time_points=200, num_epochs=1000, lr=1e-4, initialize=True, num_sines=1):
         """
 
         :param x: N x M x d
         :param y: N x L x d
         :return: N x M x L
         """
-        return self.manifold.distance(self.dsg.phi.forward(x.reshape(-1,self.d)).reshape(x.shape), self.dsg.phi.forward(y.reshape(-1,self.d)).reshape(y.shape))
+        return self.manifold.distance(self.dsg.phi.forward(x.reshape(-1,self.d)).reshape(x.shape), self.dsg.phi.forward(y.reshape(-1,self.d)).reshape(y.shape), 
+                                                                          num_intervals=num_intervals, num_time_points=num_time_points, num_epochs=num_epochs, lr=lr, 
+                                                                          initialize=initialize, num_sines=num_sines)
 
-    def parallel_transport(self, x, X, y):
+    def parallel_transport(self, x, X, y, num_bv_intervals=10, num_bv_time_points=200, num_bv_epochs=1000, bv_lr=1e-4, num_iv_intervals=200, initialize=True, num_sines=1):
         """
 
         :param x: d
@@ -106,6 +112,9 @@ class DeformedSumOfGaussianPullbackManifold(Manifold): # TODO check input discre
         return self.dsg.phi.differential_inverse(self.dsg.phi.forward(y[None]) * torch.ones(N)[:,None],
                                                 self.manifold.parallel_transport(self.dsg.phi.forward(x[None])[0],
                                                                                  self.dsg.phi.differential_forward(x[None] * torch.ones(N)[:,None], X),
-                                                                                 self.dsg.phi.forward(y[None])[0]
+                                                                                 self.dsg.phi.forward(y[None])[0],
+                                                                                 num_bv_intervals=num_bv_intervals, 
+                                                                                 num_bv_time_points=num_bv_time_points, num_bv_epochs=num_bv_epochs, bv_lr=bv_lr, num_iv_intervals=num_iv_intervals, 
+                                                                                 initialize=initialize, num_sines=num_sines
                                                                                  )
                                                 )
