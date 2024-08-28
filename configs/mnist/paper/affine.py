@@ -8,7 +8,7 @@ def get_config():
     # Logging settings
     config.base_log_dir = "./results/mnist"
     config.experiment = "NF_affine_reg_regfactor_100"
-    config.eval_log_frequency = 10
+    config.eval_log_frequency = 50
 
     # Model settings
     config.diffeomorphism_class = 'image_diffeomorphism'
@@ -20,7 +20,7 @@ def get_config():
     config.multi_scale = False
     config.num_bits = 8
     config.num_res_blocks = 3
-    config.preprocessing = None
+    config.preprocessing = None #it has to be None
 
     config.use_resnet = True
     config.resnet_batchnorm = False
@@ -35,10 +35,11 @@ def get_config():
         "tail_bound": 3.0
     }
     config.dropout_prob = 0. #0.2
+    config.premultiplication_by_U = False # new flag for premultiplication by U.T
 
     # Training settings
-    config.epochs = 4000
-    config.patience_epochs = 100
+    config.epochs = 5000
+    config.patience_epochs = 1000
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'
     config.std = 0.1 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.

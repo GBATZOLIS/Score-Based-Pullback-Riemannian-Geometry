@@ -8,7 +8,7 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/single_banana"
-    config.experiment = "no_vr_reg_U"
+    config.experiment = "lightning_no_vr_reg_U"
     config.eval_log_frequency = 100
 
     # Model settings
@@ -49,8 +49,8 @@ def get_config():
     config.learning_rate = 0.0005
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = None
-
+    config.checkpoint = '/store/CIA/gb511/projects/riemannian-geometry/code/results/single_banana/lightning_no_vr_reg_U/checkpoints/last.ckpt'
+    
     # Reproducibility
     config.seed = 1638128
 
