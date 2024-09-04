@@ -81,10 +81,11 @@ def get_optimizer_and_scheduler(model_params, config, total_steps):
     
     Returns:
         optimizer: The initialized optimizer.
-        scheduler: The initialized scheduler.
+        scheduler: The initialized scheduler (or None if not used).
     """
-    optimizer_type = getattr(config, 'optimizer', 'Adam')
+    optimizer_type = config.get('optimizer', 'Adam')
 
+    # Set up the optimizer using config.get
     if optimizer_type == 'AdamW':
         optimizer = optim.AdamW(
             model_params,
@@ -119,12 +120,14 @@ def get_optimizer_and_scheduler(model_params, config, total_steps):
     else:
         raise ValueError(f"Optimizer {optimizer_type} is not supported.")
     
-    # Setup the scheduler
-    scheduler = WarmUpCosineAnnealingScheduler(
-        optimizer, 
-        config.get('learning_rate', 2e-4), 
-        warmup_steps=config.get('warmup_steps', 1000),
-        total_steps=total_steps
-    )
+    # Set up the scheduler only if use_scheduler is True
+    scheduler = None
+    if config.get('use_scheduler', True):
+        scheduler = WarmUpCosineAnnealingScheduler(
+            optimizer, 
+            config.get('learning_rate', 2e-4), 
+            warmup_steps=config.get('warmup_steps', 1000),
+            total_steps=total_steps
+        )
     
     return optimizer, scheduler

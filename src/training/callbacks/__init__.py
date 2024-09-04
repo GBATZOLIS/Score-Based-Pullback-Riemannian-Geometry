@@ -5,7 +5,7 @@ from .euclidean_2d import check_manifold_properties_2D_distributions
 from .euclidean_3d import check_manifold_properties_3D_distributions
 
 def check_manifold_properties(dataset, phi, psi, writer, epoch, device, val_loader, d=2, create_gif=False):
-    if dataset == 'mnist':
+    if dataset in ['mnist', 'blobs']:
         check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader, create_gif=create_gif)
     elif dataset == 'single_banana':
         range = [-6., 6.]
@@ -14,6 +14,10 @@ def check_manifold_properties(dataset, phi, psi, writer, epoch, device, val_load
     elif dataset == 'combined_elongated_gaussians':
         range = [-3., 3.]
         special_points = [[0., 1.], [-1., 0.]]
+        check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, val_loader, range, special_points)
+    elif dataset == 'spiral':
+        range = [-8,8]
+        special_points = [[0., 0.], [2*np.pi, 0.]] #theta=pi/4, theta=11pi/4
         check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, val_loader, range, special_points)
     elif dataset in ['sphere', 'ellipsoid']:
         if d == 3:

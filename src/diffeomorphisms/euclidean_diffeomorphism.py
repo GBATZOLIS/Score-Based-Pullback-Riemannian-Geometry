@@ -45,6 +45,9 @@ def get_base_transform_fn(args):
                 tails = 'linear',
                 tail_bound= max(abs(x) for x in args.data_range),
                 apply_unconditional_transform=False,
+                min_bin_width=1e-3,
+                min_bin_height=1e-3,
+                min_derivative=1e-3
             )
         elif args.base_transform_type == 'affine':
             return transforms.AffineCouplingTransform(

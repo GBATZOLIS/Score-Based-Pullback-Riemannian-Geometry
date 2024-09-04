@@ -8,6 +8,10 @@ class mnist(Dataset):
         self.config = config
         self.split = split
 
+        # Set the random seed for reproducibility
+        torch.manual_seed(config.seed)
+        np.random.seed(config.seed)
+
         # Load the dataset
         if split in ['train', 'val']:
             full_dataset = datasets.MNIST(

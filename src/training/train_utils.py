@@ -110,7 +110,9 @@ class WarmUpScheduler:
     
 def save_model(phi, ema_phi, psi, ema_psi, epoch, loss, checkpoint_dir, best_checkpoints, global_step, best_val_loss, epochs_no_improve, optimizer, scheduler):
     def write_model(state_dict, path, epoch, loss, global_step, best_checkpoints, best_val_loss, epochs_no_improve):
-        scheduler.step_num = global_step
+        if scheduler is not None:
+            scheduler.step_num = global_step
+            
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': state_dict,

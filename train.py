@@ -4,7 +4,7 @@ from torch.utils.tensorboard import SummaryWriter
 import os
 from src.diffeomorphisms import get_diffeomorphism
 from src.diffeomorphisms.utils import get_principal_components  # Import the PCA computation function
-from src.strongly_convex.learnable_psi import LearnablePsi
+from src.strongly_convex import get_strongly_convex
 from src.training.train_utils import EMA, load_config, load_model, save_model, resume_training, get_log_density_fn, get_score_fn, count_parameters, check_parameters_device, set_visible_gpus, set_seed, get_full_checkpoint_path
 from src.training.optim_utils import get_optimizer_and_scheduler
 from src.training.callbacks import check_manifold_properties, check_manifold_properties_images
@@ -49,7 +49,7 @@ def main(config_path):
         print(f'mean: {mean}')
 
     phi = get_diffeomorphism(config, U=U, mean=mean)  # Pass the PCA matrix and mean if applicable
-    psi = LearnablePsi(config.d)
+    psi = get_strongly_convex(config)
 
     ## Print model summaries
     phi_total_params, phi_trainable_params = count_parameters(phi)
@@ -110,7 +110,8 @@ def main(config_path):
             ema_phi.update()
             ema_psi.update()
 
-            scheduler.step()
+            if scheduler:  # Step the scheduler if it's being used
+                scheduler.step()
 
             writer.add_scalar("Loss/Train Step", loss.item(), step)
             writer.add_scalar(f"{loss_fn.loss_name} Train Step", density_learning_loss.item(), step)

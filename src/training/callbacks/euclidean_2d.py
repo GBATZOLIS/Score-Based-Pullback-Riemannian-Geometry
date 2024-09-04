@@ -108,7 +108,8 @@ def check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, 
 
     epsilon = 0.1
     banana_rae = DeformedGaussianRiemannianAutoencoder(manifold, epsilon)
-    p = torch.linspace(range[0], range[1], 100, device=device)[:, None]
+    max_std = torch.sqrt(torch.max(psi.diagonal)).item()
+    p = torch.linspace(-3*max_std, 3*max_std, 100, device=device)[:, None]
     rae_decode_p = banana_rae.decode(p).detach().cpu().numpy()
 
     fig, ax = plt.subplots()
