@@ -8,6 +8,7 @@ import numpy as np
 from src.manifolds.deformed_gaussian_pullback_manifold import DeformedGaussianPullbackManifold
 from src.riemannian_autoencoder.deformed_gaussian_riemannian_autoencoder import DeformedGaussianRiemannianAutoencoder
 from src.unimodal import Unimodal
+from src.training.callbacks.utils import check_orthogonality, deviation_from_volume_preservation
 
 def generate_and_plot_samples_images(phi, psi, num_samples, device, writer, epoch):
     c, h, w = phi.args.c, phi.args.h, phi.args.w
@@ -123,12 +124,18 @@ def check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader
     num_samples = 64
     generate_and_plot_samples_images(phi, psi, num_samples, device, writer, epoch)
 
+    #orthogonality_deviation = check_orthogonality(phi, val_loader, device)
+    #writer.add_scalar("Orthogonality Deviation", orthogonality_deviation, epoch)
+
+    volume_pres_dev = deviation_from_volume_preservation(phi, val_loader, device)
+    writer.add_scalar("Volume Preservation Deviation", volume_pres_dev, epoch)
+
     distribution = Unimodal(diffeomorphism=phi, strongly_convex=psi)
     manifold = DeformedGaussianPullbackManifold(distribution)
 
     val_batch = next(iter(val_loader))
     images = val_batch[0].to(device)
-    num_pairs = 100
+    num_pairs = 25
     num_interpolations = 25
 
     all_interpolations = create_interpolation_pairs(images, num_pairs, num_interpolations, device, manifold, method='max_distance')

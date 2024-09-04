@@ -6,8 +6,8 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/mnist"
-    config.experiment = "NF_affine_reg_regfactor_100"
-    config.eval_log_frequency = 10
+    config.experiment = "NF_affine_noreg"
+    config.eval_log_frequency = 20
 
     # Model settings
     config.diffeomorphism_class = 'image_diffeomorphism'
@@ -36,12 +36,12 @@ def get_config():
     config.dropout_prob = 0. #0.2
 
     # Training settings
-    config.epochs = 1000
+    config.epochs = 2500
     config.patience_epochs = 100
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'
     config.std = 0.1 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
-    config.use_reg = True
+    config.use_reg = False
     config.reg_factor = 100
     config.reg_type = 'isometry'
     config.use_cv = False
@@ -55,7 +55,7 @@ def get_config():
     config.h = 32 # Height
     config.w = 32 # Width
     config.d = config.c * config.h * config.w # Shape for the image data
-    config.batch_size = 256 #64
+    config.batch_size = 64
 
     # Device settings
     config.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -65,7 +65,7 @@ def get_config():
     config.optimizer = 'AdamW'
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = 'checkpoint_epoch_977_loss_-4002.491'
+    config.checkpoint = None
 
     # Reproducibility
     config.seed = 23

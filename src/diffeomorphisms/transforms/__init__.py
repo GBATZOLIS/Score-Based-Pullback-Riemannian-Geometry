@@ -61,3 +61,5 @@ from .standard import (
 
 from .reshape import SqueezeTransform, ReshapeTransform
 from .conv import OneByOneConvolution
+
+from .principal_rotation import PrincipalRotationTransform

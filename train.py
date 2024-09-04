@@ -3,7 +3,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 import os
 from src.diffeomorphisms import get_diffeomorphism
-from src.strongly_convex.learnable_psi import LearnablePsi
+from src.diffeomorphisms.utils import get_principal_components  # Import the PCA computation function
+from src.strongly_convex import get_strongly_convex
 from src.training.train_utils import EMA, load_config, load_model, save_model, resume_training, get_log_density_fn, get_score_fn, count_parameters, check_parameters_device, set_visible_gpus, set_seed, get_full_checkpoint_path
 from src.training.optim_utils import get_optimizer_and_scheduler
 from src.training.callbacks import check_manifold_properties, check_manifold_properties_images
@@ -29,16 +30,6 @@ def main(config_path):
 
     writer = SummaryWriter(log_dir=tensorboard_dir)
 
-    # Initialize the models
-    phi = get_diffeomorphism(config.diffeomorphism_class)(config)
-    psi = LearnablePsi(config.d)
-
-    # Print model summaries
-    phi_total_params, phi_trainable_params = count_parameters(phi)
-    psi_total_params, psi_trainable_params = count_parameters(psi)
-    print(f"Model Phi - Total Parameters: {phi_total_params}, Trainable Parameters: {phi_trainable_params}")
-    print(f"Model Psi - Total Parameters: {psi_total_params}, Trainable Parameters: {psi_trainable_params}")
-
     # DataLoader for synthetic training and validation data
     dataset_class = get_dataset(config.dataset_class)
     train_dataset = dataset_class(config, split='train')
@@ -48,6 +39,23 @@ def main(config_path):
 
     val_dataset = dataset_class(config, split='val')
     val_loader = DataLoader(val_dataset, batch_size=config.batch_size, shuffle=False)
+
+    # Initialize the models
+    # Compute PCA rotation matrix and mean if the flag is enabled
+    U, mean = None, None
+    if config.get('premultiplication_by_U', False):
+        U, mean = get_principal_components(train_loader)
+        print(f'U.size(): {U.size()}')
+        print(f'mean: {mean}')
+
+    phi = get_diffeomorphism(config, U=U, mean=mean)  # Pass the PCA matrix and mean if applicable
+    psi = get_strongly_convex(config)
+
+    ## Print model summaries
+    phi_total_params, phi_trainable_params = count_parameters(phi)
+    psi_total_params, psi_trainable_params = count_parameters(psi)
+    print(f"Model Phi - Total Parameters: {phi_total_params}, Trainable Parameters: {phi_trainable_params}")
+    print(f"Model Psi - Total Parameters: {psi_total_params}, Trainable Parameters: {psi_trainable_params}")
 
     # Calculate total steps for scheduler
     total_steps = config.epochs * len(train_loader)
@@ -102,7 +110,8 @@ def main(config_path):
             ema_phi.update()
             ema_psi.update()
 
-            scheduler.step()
+            if scheduler:  # Step the scheduler if it's being used
+                scheduler.step()
 
             writer.add_scalar("Loss/Train Step", loss.item(), step)
             writer.add_scalar(f"{loss_fn.loss_name} Train Step", density_learning_loss.item(), step)

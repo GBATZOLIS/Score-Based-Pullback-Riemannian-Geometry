@@ -8,10 +8,14 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/single_banana"
-    config.experiment = "no_vr_reg"
+    config.experiment = "standard_normal"
     config.eval_log_frequency = 100
 
     # Model settings
+    ## Strongly convex function settings
+    config.strongly_convex_class = 'standard_normal_psi'
+
+    ## Diffeomorphism settings
     config.diffeomorphism_class = 'euclidean_diffeomorphism'
     config.base_transform_type = 'affine'
     config.hidden_features = 64
@@ -22,13 +26,17 @@ def get_config():
     config.apply_unconditional_transform = 0
     config.min_bin_width = 1e-3
     config.num_flow_steps = 2
+    config.premultiplication_by_U = False # new flag for premultiplication by U.T
 
     # Training settings
-    config.epochs = 2000
+    config.epochs = 1000
+    config.patience_epochs = 750
     config.checkpoint_frequency = 1
-    config.std = 1e-1
-    config.use_reg = True
-    config.reg_factor = 1.0
+    config.loss = 'normalizing flow'
+    config.std = 0.1 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
+    config.use_reg = False
+    config.reg_factor = 1
+    config.reg_type = 'isometry'
     config.use_cv = False
 
     # Data settings
@@ -37,17 +45,18 @@ def get_config():
     config.data_path = "./data"
     config.d = 2
     config.batch_size = 64
+    config.data_range = [-8,8]
 
     # Device settings
     config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Optimization settings
+    config.use_scheduler = True
     config.learning_rate = 0.0005
 
     # Optional loading of model checkpoints for resuming
-    config.load_phi_checkpoint = None
-    config.load_psi_checkpoint = None
-
+    config.checkpoint = None
+    
     # Reproducibility
     config.seed = 1638128
 

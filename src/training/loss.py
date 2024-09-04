@@ -66,7 +66,7 @@ def regularisation_term(reg_type, phi, x, train, device):
 
         if not train:
             torch.set_grad_enabled(False)
-            
+        
         norms = Jv.view(batch_size, -1).norm(dim=1)
         return torch.mean((norms - 1) ** 2)
     elif reg_type == 'volume':
@@ -146,6 +146,7 @@ def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, 
     """
     Maximizes the log-likelihood with respect to the normalizing flow model.
     """
+    
     # Derive the diagonal covariance matrix from psi
     diagonal = psi.diagonal
     base_dist_cov = torch.diag(diagonal)
@@ -171,6 +172,7 @@ def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, 
     loss = nll_loss + reg_factor * reg_loss
 
     return loss, nll_loss, reg_loss
+
 
 
 def compute_loss_variance_reduction(phi, psi, x, args_std, train=True, use_cv=False, use_reg=False, reg_factor=1, reg_type='volume', device='cuda:0'):

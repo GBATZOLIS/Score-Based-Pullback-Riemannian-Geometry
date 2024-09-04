@@ -24,3 +24,26 @@ from .typechecks import is_power_of_two
 
 from .io import get_data_root
 from .io import NoDataRootError
+
+import torch
+
+def get_principal_components(train_loader):
+    data = []
+    
+    # Collect all data into a single tensor
+    for batch in train_loader:
+        x = batch[0] if isinstance(batch, list) else batch
+        x_flat = x.view(x.size(0), -1)  # Flatten the images
+        data.append(x_flat)
+    
+    data = torch.cat(data, dim=0)  # Concatenate along the batch dimension
+    
+    # Compute the mean of the data
+    mean = torch.mean(data, dim=0, keepdim=True)
+    data_centered = data - mean  # Center the data by subtracting the mean
+    
+    # Compute SVD on the centered data
+    U, S, Vh = torch.linalg.svd(data_centered, full_matrices=False)
+    
+    # Return the principal components and the mean
+    return Vh.T, mean.squeeze(0)  # Return U and the mean

@@ -2,41 +2,39 @@ import torch
 import torch.nn as nn
 from src.strongly_convex import StronglyConvex
 
-class learnable_psi(StronglyConvex):
+class standard_normal_psi(StronglyConvex):
     """
     Class that implements the strongly convex function x \mapsto 1/2 x^\top A^{-1} x,
-    where A is a diagonal matrix with positive entries. The diagonal elements of A are
-    learnable parameters constrained to be positive.
+    where A is a diagonal matrix with positive entries. In this version, the diagonal elements of A are fixed to 1.
     """
 
     def __init__(self, d):
         """
-        Initialize the LearnablePsi function with a specified shape.
+        Initialize the StandardNormalPsi function with a specified dimension.
 
         Args:
-            shape (tuple): The shape of the diagonal matrix A.
+            d (int): The dimension of the input space.
         """
         super().__init__(d)
         self.d = d
-        # Initialize the raw parameters which will be transformed to ensure positivity
-        self.raw_diagonal = nn.Parameter(torch.zeros(d))  # Start with zeros, which will be exponentiated
+        self.register_buffer('raw_diagonal', torch.ones(d))
 
     @property
     def diagonal(self):
         """
-        Ensure the diagonal elements are always positive by taking the exponential of raw parameters.
+        Return a tensor of ones since we are fixing the diagonal entries to 1.
 
         Returns:
-            torch.Tensor: A tensor of positive diagonal entries with the same shape as specified.
+            torch.Tensor: A tensor of ones with shape (d,).
         """
-        return torch.exp(self.raw_diagonal)
+        return self.raw_diagonal  # No need to exponentiate since it's already 1.
 
     def forward(self, x):
         """
         Evaluate the function at x.
 
         Args:
-            x (torch.Tensor): A tensor with shape (batchsize, *shape).
+            x (torch.Tensor): A tensor with shape (batchsize, d).
 
         Returns:
             torch.Tensor: A tensor with shape (batchsize,) of function values.
@@ -48,10 +46,10 @@ class learnable_psi(StronglyConvex):
         Compute the gradient of the function at x.
 
         Args:
-            x (torch.Tensor): A tensor with shape (batchsize, *shape).
+            x (torch.Tensor): A tensor with shape (batchsize, d).
 
         Returns:
-            torch.Tensor: A tensor with shape (batchsize, *shape) of gradients.
+            torch.Tensor: A tensor with shape (batchsize, d) of gradients.
         """
         return x / self.diagonal
 
@@ -60,11 +58,11 @@ class learnable_psi(StronglyConvex):
         Compute the differential of the gradient of the function at x in the direction X.
 
         Args:
-            x (torch.Tensor): A tensor with shape (batchsize, *shape).
-            X (torch.Tensor): A tensor with shape (batchsize, *shape).
+            x (torch.Tensor): A tensor with shape (batchsize, d).
+            X (torch.Tensor): A tensor with shape (batchsize, d).
 
         Returns:
-            torch.Tensor: A tensor with shape (batchsize, *shape).
+            torch.Tensor: A tensor with shape (batchsize, d).
         """
         return X / self.diagonal
 
@@ -73,7 +71,7 @@ class learnable_psi(StronglyConvex):
         Compute the Fenchel conjugate of the function at y.
 
         Args:
-            y (torch.Tensor): A tensor with shape (batchsize, *shape).
+            y (torch.Tensor): A tensor with shape (batchsize, d).
 
         Returns:
             torch.Tensor: A tensor with shape (batchsize,).
@@ -85,10 +83,10 @@ class learnable_psi(StronglyConvex):
         Compute the gradient of the Fenchel conjugate at y.
 
         Args:
-            y (torch.Tensor): A tensor with shape (batchsize, *shape).
+            y (torch.Tensor): A tensor with shape (batchsize, d).
 
         Returns:
-            torch.Tensor: A tensor with shape (batchsize, *shape).
+            torch.Tensor: A tensor with shape (batchsize, d).
         """
         return y * self.diagonal
 
@@ -97,10 +95,10 @@ class learnable_psi(StronglyConvex):
         Compute the differential of the gradient of the Fenchel conjugate at y in the direction Y.
 
         Args:
-            y (torch.Tensor): A tensor with shape (batchsize, *shape).
-            Y (torch.Tensor): A tensor with shape (batchsize, *shape).
+            y (torch.Tensor): A tensor with shape (batchsize, d).
+            Y (torch.Tensor): A tensor with shape (batchsize, d).
 
         Returns:
-            torch.Tensor: A tensor with shape (batchsize, *shape).
+            torch.Tensor: A tensor with shape (batchsize, d).
         """
         return Y * self.diagonal

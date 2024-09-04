@@ -1,25 +1,26 @@
 import ml_collections
 import torch
 
+#THIS CONFIG WORKS!
 def get_config():
     config = ml_collections.ConfigDict()
 
     # Logging settings
     config.base_log_dir = "./results/mnist"
-    config.experiment = "NF_rq_reg_regfactor_100"
-    config.eval_log_frequency = 10
+    config.experiment = "NF_affine_reg_regfactor_100_U"
+    config.eval_log_frequency = 50
 
     # Model settings
     config.diffeomorphism_class = 'image_diffeomorphism'
     config.actnorm = True
     config.alpha = 0.05
-    config.coupling_layer_type = 'rational_quadratic_spline'
+    config.coupling_layer_type = 'affine'
     config.hidden_channels = 96
     config.levels = 3
     config.multi_scale = False
     config.num_bits = 8
     config.num_res_blocks = 3
-    config.preprocessing = None
+    config.preprocessing = None #it has to be None
 
     config.use_resnet = True
     config.resnet_batchnorm = False
@@ -34,10 +35,11 @@ def get_config():
         "tail_bound": 3.0
     }
     config.dropout_prob = 0. #0.2
+    config.premultiplication_by_U = True # new flag for premultiplication by U.T
 
     # Training settings
-    config.epochs = 1000
-    config.patience_epochs = 100
+    config.epochs = 5000
+    config.patience_epochs = 1000
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'
     config.std = 0.1 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.

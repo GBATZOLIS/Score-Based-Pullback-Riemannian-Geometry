@@ -51,6 +51,34 @@ class combined_elongated_gaussians:
 
         return cloned_gradients
 
+# Spiral dataset class
+class Spiral2D:
+    def __init__(self, num_spirals=1, points_per_spiral=2500, noise=0.1, max_angle=2*np.pi):
+        self.num_spirals = num_spirals
+        self.points_per_spiral = points_per_spiral
+        self.noise = noise
+        self.max_angle = max_angle
+        
+        self.data = self.generate_spiral()
+
+    def generate_spiral(self):
+        n = self.num_spirals * self.points_per_spiral
+        theta = np.sqrt(np.random.rand(n)) * self.max_angle * self.num_spirals
+
+        # Generate spiral in polar coordinates
+        r = theta + np.random.randn(n) * self.noise
+
+        # Convert to Cartesian coordinates
+        x = r * np.cos(theta)
+        y = r * np.sin(theta)
+
+        data = np.stack((x, y), axis=1)
+
+        return torch.tensor(data, dtype=torch.float32)
+
+    def get_data(self):
+        return self.data
+    
 # Enable anomaly detection
 torch.autograd.set_detect_anomaly(True)
 
@@ -102,7 +130,7 @@ def plot_samples(samples, log_density_values, x_grid, y_grid, step):
 
 def main():
     parser = argparse.ArgumentParser(description='Run Langevin MCMC to generate samples and optional outputs.')
-    parser.add_argument('--dataset', type=str, choices=['single_banana', 'combined_elongated_gaussians'], required=True, help='Choose the dataset.')
+    parser.add_argument('--dataset', type=str, choices=['single_banana', 'combined_elongated_gaussians', 'spiral'], required=True, help='Choose the dataset.')
     parser.add_argument('--create_gif', action='store_true', help='Create a GIF of the sampling process.')
     parser.add_argument('--save_data', action='store_false', help='Save the last sample in the MCMC chain.')
     parser.add_argument('--save_dir', type=str, default='./data/', help='Directory to save the data.')
@@ -114,45 +142,11 @@ def main():
         model = QuadraticBanana(shear, offset, torch.tensor([a1, a2]))
     elif args.dataset == 'combined_elongated_gaussians':
         model = combined_elongated_gaussians()
+    elif args.dataset == 'spiral':
+        model = Spiral2D(points_per_spiral=10000, noise=0., max_angle=2*np.pi)
 
-    # Define the grid for visualization
-    xx = torch.linspace(-6.0, 6.0, 500)
-    yy = torch.linspace(-6.0, 6.0, 500)
-    x_grid, y_grid = torch.meshgrid(xx, yy, indexing='ij')
-
-    # Prepare the grid as input to the model for log density evaluation
-    xy_grid = torch.stack([x_grid.flatten(), y_grid.flatten()], dim=1)
-
-    # Compute log density over the grid
-    log_density_values = model.log_density(xy_grid).reshape(500, 500).detach().numpy()
-    
-    # Run the Langevin MCMC
-    num_samples = 2500
-    num_mcmc_samples = 1000
-    step_size = 0.1
-    initial_value = torch.zeros((num_samples, 2), requires_grad=True)
-    interval_samples = langevin_mcmc(model, num_mcmc_samples, step_size, initial_value)
-
-    if args.create_gif:
-        # Generate plots and GIF
-        filenames = []
-        indices = np.linspace(0, num_mcmc_samples-1, 20, dtype=int)
-        for idx in indices:
-            samples = interval_samples[idx].numpy()
-            plot_samples(samples, log_density_values, x_grid, y_grid, idx)
-            filenames.append(f'step_{idx}.png')
-
-        with imageio.get_writer('langevin_mcmc.gif', mode='I', duration=0.5) as writer:
-            for filename in filenames:
-                image = imageio.imread(filename)
-                writer.append_data(image)
-
-        for filename in filenames:
-            os.remove(filename)  # Clean up files
-
-    if args.save_data:
-        # Save the last sample in the MCMC chain
-        final_samples = interval_samples[-1].numpy()
+    if args.dataset in ['spiral']:
+        final_samples = model.get_data().numpy()
 
         # Calculate the sizes for train, validation, and test sets
         num_samples = len(final_samples)
@@ -172,6 +166,64 @@ def main():
         np.save(os.path.join(save_path, 'train.npy'), train_data)
         np.save(os.path.join(save_path, 'val.npy'), val_data)
         np.save(os.path.join(save_path, 'test.npy'), test_data)
+    else:
+        # Define the grid for visualization
+        xx = torch.linspace(-6.0, 6.0, 500)
+        yy = torch.linspace(-6.0, 6.0, 500)
+        x_grid, y_grid = torch.meshgrid(xx, yy, indexing='ij')
+
+        # Prepare the grid as input to the model for log density evaluation
+        xy_grid = torch.stack([x_grid.flatten(), y_grid.flatten()], dim=1)
+
+        # Compute log density over the grid
+        log_density_values = model.log_density(xy_grid).reshape(500, 500).detach().numpy()
+        
+        # Run the Langevin MCMC
+        num_samples = 2500
+        num_mcmc_samples = 1000
+        step_size = 0.1
+        initial_value = torch.zeros((num_samples, 2), requires_grad=True)
+        interval_samples = langevin_mcmc(model, num_mcmc_samples, step_size, initial_value)
+
+        if args.create_gif:
+            # Generate plots and GIF
+            filenames = []
+            indices = np.linspace(0, num_mcmc_samples-1, 20, dtype=int)
+            for idx in indices:
+                samples = interval_samples[idx].numpy()
+                plot_samples(samples, log_density_values, x_grid, y_grid, idx)
+                filenames.append(f'step_{idx}.png')
+
+            with imageio.get_writer('langevin_mcmc.gif', mode='I', duration=0.5) as writer:
+                for filename in filenames:
+                    image = imageio.imread(filename)
+                    writer.append_data(image)
+
+            for filename in filenames:
+                os.remove(filename)  # Clean up files
+
+        if args.save_data:
+            # Save the last sample in the MCMC chain
+            final_samples = interval_samples[-1].numpy()
+
+            # Calculate the sizes for train, validation, and test sets
+            num_samples = len(final_samples)
+            train_size = int(0.8 * num_samples)
+            val_size = int(0.1 * num_samples)
+
+            # Split the data
+            train_data = final_samples[:train_size]
+            val_data = final_samples[train_size:train_size + val_size]
+            test_data = final_samples[train_size + val_size:]
+
+            # Ensure the directory exists
+            save_path = os.path.join(args.save_dir, args.dataset)
+            os.makedirs(save_path, exist_ok=True)
+
+            # Save the datasets as .npy files
+            np.save(os.path.join(save_path, 'train.npy'), train_data)
+            np.save(os.path.join(save_path, 'val.npy'), val_data)
+            np.save(os.path.join(save_path, 'test.npy'), test_data)
 
 if __name__ == "__main__":
     main()

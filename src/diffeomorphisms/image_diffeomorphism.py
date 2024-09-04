@@ -106,7 +106,7 @@ def create_transform_step(num_channels, hidden_channels, actnorm, coupling_layer
 
     return transforms.CompositeTransform(step_transforms)
 
-def create_transform(c, h, w, levels, hidden_channels, steps_per_level, alpha, num_bits, preprocessing, multi_scale, coupling_layer_type, spline_params, use_resnet, num_res_blocks, resnet_batchnorm, dropout_prob, actnorm):
+def create_transform(c, h, w, levels, hidden_channels, steps_per_level, alpha, num_bits, preprocessing, multi_scale, coupling_layer_type, spline_params, use_resnet, num_res_blocks, resnet_batchnorm, dropout_prob, actnorm, U, mean):
     if not isinstance(hidden_channels, list):
         hidden_channels = [hidden_channels] * levels
 
@@ -127,6 +127,7 @@ def create_transform(c, h, w, levels, hidden_channels, steps_per_level, alpha, n
                 c, h, w = new_shape
     else:
         all_transforms = []
+        all_transforms.append(transforms.PrincipalRotationTransform(U=U, mean=mean))
 
         for level, level_hidden_channels in zip(range(levels), hidden_channels):
             squeeze_transform = transforms.SqueezeTransform()
@@ -171,9 +172,8 @@ def create_transform(c, h, w, levels, hidden_channels, steps_per_level, alpha, n
         return transforms.CompositeTransform([mct])
 
 
-class core_image_diffeomorphism(Diffeomorphism):
-
-    def __init__(self, args) -> None:
+class image_diffeomorphism(Diffeomorphism):
+    def __init__(self, args, U=None, mean=None) -> None:
         super().__init__(args.d)
         self.args = args
         self._transform = create_transform(
@@ -191,7 +191,9 @@ class core_image_diffeomorphism(Diffeomorphism):
             num_res_blocks=args.num_res_blocks,
             resnet_batchnorm=args.resnet_batchnorm,
             dropout_prob=args.dropout_prob,
-            actnorm=args.actnorm
+            actnorm=args.actnorm, 
+            U=U,
+            mean=mean
         )
 
     def forward(self, x):
@@ -209,58 +211,3 @@ class core_image_diffeomorphism(Diffeomorphism):
     def differential_inverse(self, y, Y):
         _, jvp_result = jvp(lambda y: self._transform.inverse(y, context=None)[0], (y,), (Y,))
         return jvp_result
-
-class image_diffeomorphism(core_image_diffeomorphism):
-
-    def __init__(self, args) -> None:
-        super().__init__(args)
-        self.c, self.h, self.w = args.c, args.h, args.w  # Store the original shape
-
-    def flatten_image(self, image_tensor):
-        # Flatten the image tensor to shape (batch_size, c*h*w)
-        return image_tensor.view(image_tensor.size(0), -1)
-
-    def unflatten_image(self, flattened_tensor):
-        # Unflatten the tensor to shape (batch_size, c, h, w)
-        return flattened_tensor.view(flattened_tensor.size(0), self.c, self.h, self.w)
-
-    def flatten_unflatten_decorator(func):
-        def wrapper(self, arg):
-            # Check if the input tensor is flattened
-            input_was_flattened = arg.dim() == 2
-            print(f'input_was_flattened: {input_was_flattened}')
-            
-            # Get the device of the input tensor
-            device = arg.device
-            print(f'Input tensor size: {arg.size()}')
-            
-            # Unflatten if necessary and move to the same device
-            unflattened_arg = self.unflatten_image(arg.to(device)) if input_was_flattened else arg.to(device)
-            print(f'Unflattened tensor size: {unflattened_arg.size()}')
-            
-            # Call the original method
-            result = func(self, unflattened_arg)
-            print(f'Result tensor size before flattening: {result.size()}')
-            
-            # Flatten the output tensor if the input was flattened
-            result = self.flatten_image(result.to(device)) if input_was_flattened else result.to(device)
-            print(f'Result tensor size after flattening: {result.size()}')
-            
-            return result
-        return wrapper
-
-    #@flatten_unflatten_decorator
-    def forward(self, x):
-        return super().forward(x)
-
-    #@flatten_unflatten_decorator
-    def inverse(self, y):
-        return super().inverse(y)
-
-    #@flatten_unflatten_decorator
-    def differential_forward(self, x, X):
-        return super().differential_forward(x, X)
-
-    #@flatten_unflatten_decorator
-    def differential_inverse(self, y, Y):
-        return super().differential_inverse(y, Y)
