@@ -7,9 +7,13 @@ from .euclidean_3d import check_manifold_properties_3D_distributions
 def check_manifold_properties(dataset, phi, psi, writer, epoch, device, val_loader, d=2, create_gif=False):
     if dataset in ['mnist', 'blobs']:
         check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader, create_gif=create_gif)
-    elif dataset == 'single_banana':
+    elif dataset in ['single_banana', 'squeezed_single_banana']:
         range = [-6., 6.]
         special_points = [[2., 4.], [2., -4.]]
+        check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, val_loader, range, special_points)
+    elif dataset == 'river':
+        range = [-8., 8.]
+        special_points = [[1.,5*np.pi/4], [-1.,-5*np.pi/4]]
         check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, val_loader, range, special_points)
     elif dataset == 'combined_elongated_gaussians':
         range = [-3., 3.]

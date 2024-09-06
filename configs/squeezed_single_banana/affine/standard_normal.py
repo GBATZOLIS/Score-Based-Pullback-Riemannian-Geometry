@@ -7,14 +7,14 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     # Logging settings
-    config.base_log_dir = "./results/single_banana"
-    config.experiment = "our_method"
+    config.base_log_dir = "./results/squeezed_single_banana/affine"
+    config.experiment = "standard_normal"
     config.eval_log_frequency = 100
 
     # Model settings
     ## Strongly convex function settings
-    config.strongly_convex_class = 'learnable_psi'
-    
+    config.strongly_convex_class = 'standard_normal_psi'
+
     ## Diffeomorphism settings
     config.diffeomorphism_class = 'euclidean_diffeomorphism'
     config.base_transform_type = 'affine'
@@ -30,21 +30,22 @@ def get_config():
 
     # Training settings
     config.epochs = 1000
-    config.patience_epochs = 750
+    config.patience_epochs = 100
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'
-    config.std = 0.1 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
-    config.use_reg = True
+    config.std = 0.074 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
+    config.use_reg = False
     config.reg_factor = 1
     config.reg_type = 'isometry'
     config.use_cv = False
 
     # Data settings
     config.dataset_class = 'numpy_dataset'
-    config.dataset = 'single_banana'
+    config.dataset = 'squeezed_single_banana'
     config.data_path = "./data"
     config.d = 2
     config.batch_size = 64
+    config.data_range = [-10,10]
 
     # Device settings
     config.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -54,9 +55,9 @@ def get_config():
     config.learning_rate = 0.0005
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = None #'/store/CIA/gb511/projects/riemannian-geometry/code/results/single_banana/lightning_no_vr_reg_U/checkpoints/last.ckpt'
+    config.checkpoint = '/home/gb511/riemannian_geo/results/squeezed_single_banana/affine/standard_normal/checkpoints/checkpoint_epoch_262_loss_2.240.pth'
     
     # Reproducibility
-    config.seed = 1638128
+    config.seed = 123
 
     return config

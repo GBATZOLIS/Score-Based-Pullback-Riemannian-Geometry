@@ -1,4 +1,6 @@
 from src.unimodal.deformed_gaussian.quadratic_banana import QuadraticBanana
+from src.unimodal.deformed_gaussian.quadratic_river import QuadraticRiver
+from src.multimodal.deformed_sum_of_identical_gaussian.multi_identical_quadratic_river import MultiIdenticalQuadraticRiver
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
@@ -83,12 +85,16 @@ class Spiral2D:
 torch.autograd.set_detect_anomaly(True)
 
 def langevin_mcmc(model, num_samples, step_size, initial_value):
+    # Ensure the initial value has requires_grad = True
     if not initial_value.requires_grad:
         initial_value.requires_grad_(True)
     
     batch_size = initial_value.shape[0]
     samples = torch.zeros(num_samples, batch_size, 2)  # Initialize tensor to store trajectories
-    current_x = initial_value.clone()  # Ensure it is a leaf tensor
+    current_x = initial_value.clone()  # Clone to avoid modifying the input
+
+    # Initialize the rejection counter
+    num_rejections = 0
 
     for i in tqdm(range(num_samples)):
         current_grad = model.score(current_x)
@@ -107,11 +113,21 @@ def langevin_mcmc(model, num_samples, step_size, initial_value):
         # Accept or reject
         accept = torch.log(torch.rand(batch_size)) < log_acceptance_ratio
 
+        # Count the number of rejections (when accept is False)
+        num_rejections += (~accept).sum().item()  # Count the number of rejections
+
         # Use torch.where to handle tensor updates without in-place operations
         current_x = torch.where(accept.unsqueeze(1), proposed_x, current_x)
 
         # Store the current_x in samples at index i
         samples[i] = current_x.detach()  # Store a detached version of the current_x
+
+    # Calculate the acceptance rate
+    total_proposals = num_samples * batch_size
+    acceptance_rate = (total_proposals - num_rejections) / total_proposals
+
+    print(f"Acceptance Rate: {acceptance_rate * 100:.2f}%")
+    print(f"Total Rejections: {num_rejections}")
 
     return samples
 
@@ -130,7 +146,7 @@ def plot_samples(samples, log_density_values, x_grid, y_grid, step):
 
 def main():
     parser = argparse.ArgumentParser(description='Run Langevin MCMC to generate samples and optional outputs.')
-    parser.add_argument('--dataset', type=str, choices=['single_banana', 'combined_elongated_gaussians', 'spiral'], required=True, help='Choose the dataset.')
+    parser.add_argument('--dataset', type=str, choices=['single_banana', 'squeezed_single_banana', 'combined_elongated_gaussians', 'spiral', 'river'], required=True, help='Choose the dataset.')
     parser.add_argument('--create_gif', action='store_true', help='Create a GIF of the sampling process.')
     parser.add_argument('--save_data', action='store_false', help='Save the last sample in the MCMC chain.')
     parser.add_argument('--save_dir', type=str, default='./data/', help='Directory to save the data.')
@@ -140,6 +156,16 @@ def main():
     if args.dataset == 'single_banana':
         shear, offset, a1, a2 = 1/9, 0., 1/4, 4
         model = QuadraticBanana(shear, offset, torch.tensor([a1, a2]))
+    elif args.dataset == 'squeezed_single_banana':
+        shear, offset, a1, a2 = 1/9, 0., 1/81, 4
+        model = QuadraticBanana(shear, offset, torch.tensor([a1, a2]))
+    elif args.dataset == 'river':
+        shear, offset, a1, a2 = 2, 0, 1/25, 3
+        model = QuadraticRiver(shear, offset, torch.tensor([a1, a2]))
+        #model = MultiIdenticalQuadraticRiver(river_shear=1/2, river_offset=0., 
+        #                                      quadratic_diagonal=torch.tensor([1/4, 4.]), 
+        #                                      quadratic_offsets=torch.tensor([[0., -6.], [0.,0.], [0., 6.]]), 
+        #                                      quadratic_weights=torch.ones(3))
     elif args.dataset == 'combined_elongated_gaussians':
         model = combined_elongated_gaussians()
     elif args.dataset == 'spiral':
@@ -168,8 +194,8 @@ def main():
         np.save(os.path.join(save_path, 'test.npy'), test_data)
     else:
         # Define the grid for visualization
-        xx = torch.linspace(-6.0, 6.0, 500)
-        yy = torch.linspace(-6.0, 6.0, 500)
+        xx = torch.linspace(-12.0, 12.0, 500)
+        yy = torch.linspace(-12.0, 12.0, 500)
         x_grid, y_grid = torch.meshgrid(xx, yy, indexing='ij')
 
         # Prepare the grid as input to the model for log density evaluation
@@ -179,11 +205,14 @@ def main():
         log_density_values = model.log_density(xy_grid).reshape(500, 500).detach().numpy()
         
         # Run the Langevin MCMC
-        num_samples = 2500
-        num_mcmc_samples = 1000
-        step_size = 0.1
+        num_samples = 5000
+        num_mcmc_samples = 2500
+        step_size = 0.125
         initial_value = torch.zeros((num_samples, 2), requires_grad=True)
         interval_samples = langevin_mcmc(model, num_mcmc_samples, step_size, initial_value)
+
+        samples = interval_samples[-1].numpy()
+        plot_samples(samples, log_density_values, x_grid, y_grid, -1)
 
         if args.create_gif:
             # Generate plots and GIF
