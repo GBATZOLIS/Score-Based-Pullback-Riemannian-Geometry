@@ -4,7 +4,7 @@ from src.strongly_convex import StronglyConvex
 
 class QuadraticDiagonal(StronglyConvex): # TODO
     """ Class that implements the strongly convex function x \mapsto 1/2 x^\top A^{-1} x, where A is diagonal with positive entries """
-    def __init__(self, diagonal, offset=None) -> None:
+    def __init__(self, diagonal, offset=None, stds=None, use_softplus=False) -> None:
         super().__init__(len(diagonal))
 
         self.diagonal = diagonal # torch tensor of size d

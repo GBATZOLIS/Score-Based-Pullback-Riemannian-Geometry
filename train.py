@@ -9,7 +9,7 @@ from src.training.train_utils import EMA, load_config, load_model, save_model, r
 from src.training.optim_utils import get_optimizer_and_scheduler
 from src.training.callbacks import check_manifold_properties, check_manifold_properties_images
 from src.training.loss import get_loss_function
-from src.training.plot_utils import plot_data
+from src.training.plot_utils import plot_data, plot_variances
 from src.training.data_utils import compute_mean_distance_and_sigma
 from tqdm import tqdm
 from torch.autograd.functional import jvp
@@ -42,14 +42,15 @@ def main(config_path):
 
     # Initialize the models
     # Compute PCA rotation matrix and mean if the flag is enabled
-    U, mean = None, None
+    U, mean, stds = None, None, None
     if config.get('premultiplication_by_U', False):
-        U, mean = get_principal_components(train_loader)
+        U, mean, stds = get_principal_components(train_loader, config.std)
         print(f'U.size(): {U.size()}')
         print(f'mean: {mean}')
+        print(f'stds: {stds[:30]}')
 
     phi = get_diffeomorphism(config, U=U, mean=mean)  # Pass the PCA matrix and mean if applicable
-    psi = get_strongly_convex(config)
+    psi = get_strongly_convex(config, stds=stds)
 
     ## Print model summaries
     phi_total_params, phi_trainable_params = count_parameters(phi)
@@ -78,6 +79,9 @@ def main(config_path):
     start_epoch, step, best_checkpoints, best_val_loss, epochs_no_improve, optimizer, scheduler = resume_training(
         config, phi, ema_phi, psi, ema_psi, load_model, get_optimizer_and_scheduler, total_steps, train_loader
     )
+
+    if start_epoch == 0 and config.get('premultiplication_by_U', False):
+        plot_variances(writer, stds, start_epoch)
 
     # Get the appropriate loss function
     loss_fn = get_loss_function(config)

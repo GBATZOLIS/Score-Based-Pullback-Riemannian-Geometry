@@ -9,6 +9,7 @@ from src.manifolds.deformed_gaussian_pullback_manifold import DeformedGaussianPu
 from src.riemannian_autoencoder.deformed_gaussian_riemannian_autoencoder import DeformedGaussianRiemannianAutoencoder
 from src.unimodal import Unimodal
 from src.training.callbacks.utils import check_orthogonality, deviation_from_volume_preservation
+import matplotlib.pyplot as plt
 
 def generate_and_plot_samples_images(phi, psi, num_samples, device, writer, epoch):
     c, h, w = phi.args.c, phi.args.h, phi.args.w
@@ -120,6 +121,36 @@ def encode_decode_images(manifold, images, epsilon, writer, epoch):
     decoded_grid = vutils.make_grid(decoded_images, nrow=num_cols, padding=2, normalize=True, scale_each=True)
     writer.add_image("Projected on Manifold Images", decoded_grid, epoch)
 
+def log_diagonal_values(psi, writer, epoch):
+    # Access the diagonal values of psi
+    diagonal_values = psi.diagonal.detach().cpu().numpy()
+    diagonal_values = np.sort(diagonal_values)[::-1]
+
+    # Create normal scale plot
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(np.arange(len(diagonal_values)), diagonal_values, marker='o', linestyle='-', color='b')
+    ax.set_title('Diagonal Values of psi (Normal Scale)')
+    ax.set_xlabel('Index')
+    ax.set_ylabel('Diagonal Value')
+    ax.grid(True)
+
+    # Save the plot to a temporary buffer and log to TensorBoard
+    writer.add_figure("Diagonal Values (Normal Scale)", fig, epoch)
+    plt.close(fig)
+
+    # Create log scale plot
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(np.arange(len(diagonal_values)), diagonal_values, marker='o', linestyle='-', color='b')
+    ax.set_yscale('log')
+    ax.set_title('Diagonal Values of psi (Log Scale)')
+    ax.set_xlabel('Index')
+    ax.set_ylabel('Log Diagonal Value')
+    ax.grid(True)
+
+    # Save the plot to a temporary buffer and log to TensorBoard
+    writer.add_figure("Diagonal Values (Log Scale)", fig, epoch)
+    plt.close(fig)
+
 def check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader, create_gif=False):
     num_samples = 64
     generate_and_plot_samples_images(phi, psi, num_samples, device, writer, epoch)
@@ -148,3 +179,6 @@ def check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader
 
     epsilon = 0.1
     encode_decode_images(manifold, images, epsilon, writer, epoch)
+
+    # Log diagonal values of psi
+    log_diagonal_values(psi, writer, epoch)
