@@ -46,10 +46,14 @@ class CompositeTransform(Transform):
         device = inputs.device
         outputs = inputs
         total_logabsdet = torch.zeros(batch_size, device=device)
+        #print(total_logabsdet.size())
         #print(f"Initial total_logabsdet device: {total_logabsdet.device}")
         for i, func in enumerate(funcs):
             #print(f"Before transform {i} ({func.__class__.__name__}): inputs device: {outputs.device}")
             outputs, logabsdet = func(outputs, context)
+            # Print the layer name and the shape of logabsdet
+            #print(f"Layer {i}: {func.__class__.__name__}, logabsdet size: {logabsdet.size()}")
+            #print(logabsdet.size())
             #print(f"After transform {i} ({func.__class__.__name__}): outputs device: {outputs.device}, logabsdet device: {logabsdet.device}")
             total_logabsdet += logabsdet
             #print(f"After transform {i} ({func.__class__.__name__}): total_logabsdet device: {total_logabsdet.device}")

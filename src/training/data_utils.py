@@ -25,7 +25,7 @@ def compute_mean_distance_and_sigma(train_loader):
     print(f"Range of the data - Min: {data_min}, Max: {data_max}")
     
     # Reshape the data to (total_points, c*w*h) for pairwise distance computation
-    all_data_flat = all_data.view(total_points, -1)
+    all_data_flat = all_data.view(total_points, -1)[:10000]
     
     # Compute pairwise distances using broadcasting and vectorized operations
     distances_matrix = torch.cdist(all_data_flat, all_data_flat, p=2)

@@ -180,6 +180,7 @@ class AffineCouplingTransform(CouplingTransform):
         log_scale = torch.log(scale)
         outputs = inputs * scale + shift
         logabsdet = utils.sum_except_batch(log_scale, num_batch_dims=1)
+        #logabsdet = logabsdet.unsqueeze(-1)
         return outputs, logabsdet
 
     def _coupling_transform_inverse(self, inputs, transform_params):
@@ -187,6 +188,7 @@ class AffineCouplingTransform(CouplingTransform):
         log_scale = torch.log(scale)
         outputs = (inputs - shift) / scale
         logabsdet = -utils.sum_except_batch(log_scale, num_batch_dims=1)
+        #logabsdet = logabsdet.unsqueeze(-1)
         return outputs, logabsdet
 
 

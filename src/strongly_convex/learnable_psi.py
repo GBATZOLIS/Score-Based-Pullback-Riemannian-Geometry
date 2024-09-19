@@ -37,8 +37,10 @@ class learnable_psi(StronglyConvex):
             
             self.raw_diagonal = nn.Parameter(raw_diagonal_init)
         else:
-            # Default to zeros if singular values are not provided
-            self.raw_diagonal = nn.Parameter(torch.zeros(d))
+            if self.use_softplus:
+                self.raw_diagonal = nn.Parameter(torch.tensor(0.5413))  # Initialize to ensure softplus(raw_diagonal) = 1
+            else:
+                self.raw_diagonal = nn.Parameter(torch.zeros(d)) # Initialize to ensure exp(raw_diagonal) = 1
 
     @property
     def diagonal(self):

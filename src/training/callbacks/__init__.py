@@ -3,6 +3,7 @@ import torch
 from .images import check_manifold_properties_images
 from .euclidean_2d import check_manifold_properties_2D_distributions
 from .euclidean_3d import check_manifold_properties_3D_distributions
+from .euclidean_Nd import check_manifold_properties_ND_distributions
 
 def check_manifold_properties(dataset, phi, psi, writer, epoch, device, val_loader, d=2, create_gif=False):
     if dataset in ['mnist', 'blobs']:
@@ -15,6 +16,25 @@ def check_manifold_properties(dataset, phi, psi, writer, epoch, device, val_load
         range = [-8., 8.]
         special_points = [[1.,5*np.pi/4], [-1.,-5*np.pi/4]]
         check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, val_loader, range, special_points)
+    elif dataset.startswith('sinusoid'):
+        parts = dataset.split('_')
+        K, N = int(parts[1]), int(parts[2])
+        range, special_points = None, None
+        if N == 2:
+            check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, val_loader, range, special_points)
+        elif N == 3:
+            check_manifold_properties_3D_distributions(phi, psi, writer, epoch, device, 
+                                                   val_loader, range, special_points)
+        elif N > 3:
+            check_manifold_properties_ND_distributions(phi, psi, writer, epoch, device, 
+                                                    val_loader, range, special_points)
+
+    elif dataset == 'river3d':
+        ranges = None
+        special_points = [[ 0.9836, -0.2913,  1.7300], [-0.8735,  0.7631, -2.0000]]
+        check_manifold_properties_3D_distributions(
+                phi, psi, writer, epoch, device, val_loader, ranges, special_points
+            )
     elif dataset == 'combined_elongated_gaussians':
         range = [-3., 3.]
         special_points = [[0., 1.], [-1., 0.]]

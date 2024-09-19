@@ -10,6 +10,8 @@ from src.riemannian_autoencoder.deformed_gaussian_riemannian_autoencoder import 
 from src.unimodal import Unimodal
 from src.training.callbacks.utils import check_orthogonality, deviation_from_volume_preservation
 import matplotlib.pyplot as plt
+import time 
+from tqdm import tqdm
 
 def generate_and_plot_samples_images(phi, psi, num_samples, device, writer, epoch):
     c, h, w = phi.args.c, phi.args.h, phi.args.w
@@ -151,15 +153,230 @@ def log_diagonal_values(psi, writer, epoch):
     writer.add_figure("Diagonal Values (Log Scale)", fig, epoch)
     plt.close(fig)
 
+
+def compute_jacobians_batch(phi, x_batch):
+    def phi_single_sample(x):
+        # x has shape (c, w, h)
+        x = x.unsqueeze(0)  # Shape: (1, c, w, h)
+        phi_x = phi(x)  # Shape: (1, c*w*h) since phi flattens the output
+        return phi_x.squeeze(0)  # Shape: (c*w*h,)
+
+    jacobians = []  # List to store the Jacobians for each point in the batch
+
+    # Loop over each point in the batch
+    for i in range(x_batch.size(0)):
+        # Compute the Jacobian for the i-th sample
+        x_single = x_batch[i]  # Shape: (c, w, h)
+        
+        # Compute Jacobian: Initially, this will have shape (c, w, h, c, w, h)
+        J_single = torch.autograd.functional.jacobian(func=phi_single_sample, inputs=x_single, create_graph=False)
+        
+        # Reshape J_single from (c, w, h, c, w, h) to (c*w*h, c*w*h)
+        J_single_reshaped = J_single.view(x_single.numel(), -1)  # Shape: (c*w*h, c*w*h)
+        
+        # Append the reshaped Jacobian to the list
+        jacobians.append(J_single_reshaped)
+
+    # Concatenate all the Jacobians along the batch dimension
+    J_batch = torch.stack(jacobians, dim=0)  # Shape: [batch_size, c*w*h, c*w*h]
+
+    return J_batch
+
+
+import torch
+import numpy as np
+import random
+from tqdm import tqdm
+
+def scalar_phi_component_batch(i, x, phi):
+    """
+    Extract the i-th component of the output of phi for the entire batch.
+    
+    Args:
+        i (int): Index of the component to extract.
+        x (torch.Tensor): Input batch with shape (batch_size, c, w, h).
+        phi (callable): Flow transformation function.
+
+    Returns:
+        torch.Tensor: Sum of the i-th component of phi(x) over the batch.
+    """
+    # Compute phi(x) and sum over the i-th component for all batch samples
+    return phi(x)[:, i].sum()  # Return the i-th component for the entire batch
+
+def compute_flow_metrics(phi, psi, val_loader, device, num_batches=1, num_samples_per_batch=1, K=10):
+    """
+    Compute flow metrics, including the Hessian-vector product for K randomly selected columns.
+    
+    Args:
+        phi (callable): Flow transformation function.
+        psi (torch.Tensor): Diagonal covariance matrix parameters.
+        val_loader (DataLoader): Validation data loader.
+        device (torch.device): Device to perform computations on (CPU/GPU).
+        num_batches (int, optional): Number of batches to process. Defaults to 1.
+        num_samples_per_batch (int, optional): Number of samples per batch. Defaults to 1.
+        K (int, optional): Number of randomly selected columns for Hessian-vector product computation. Defaults to 10.
+
+    Returns:
+        metrics (dict): Dictionary containing computed metrics.
+    """
+    
+    # Initialize accumulators for metrics
+    iso_scores_list = []
+    volume_regs_list = []
+    jacobian_norms_list = []
+    hessian_norms_list = []
+    singular_values_list = []
+
+    # Inverse of the diagonal covariance matrix Σ^{-1}
+    sigma_diagonal = psi.diagonal.detach()  # Shape: (c*w*h,)
+    sigma_inv = 1.0 / sigma_diagonal  # Shape: (c*w*h,)
+    sigma_inv_matrix = torch.diag(sigma_inv).to(device)  # Shape: (c*w*h, c*w*h)
+
+    batch_counter = 0
+
+    with torch.no_grad():  # Disable gradient tracking
+        for batch in val_loader:
+            if batch_counter >= num_batches:
+                break  # Process only the specified number of batches
+
+            # Handle cases where batch is a tuple or list
+            x = batch[0] if isinstance(batch, (list, tuple)) else batch
+            x = x.to(device)
+            batch_size, c, w, h = x.size()  # Image input dimensions
+
+            # Limit the number of samples per batch
+            num_samples = min(num_samples_per_batch, batch_size)
+            x_batch = x[:num_samples]  # Shape: (num_samples, c, w, h)
+
+            # Compute phi(x_batch), which flattens the image
+            phi_x_batch = phi(x_batch)  # phi_x_batch.shape: (num_samples, c*w*h)
+
+            # Compute v_batch = Σ^{-1} φ(x_batch)
+            v_batch = phi_x_batch * sigma_inv.unsqueeze(0)  # Shape: (num_samples, c*w*h)
+
+            # Reshape v_batch to match the shape of x_batch: (num_samples, c, w, h)
+            v_batch_reshaped = v_batch.view(num_samples, c, w, h)
+
+            # Compute Jacobian J for the entire batch without tracking gradients
+            J_batch = compute_jacobians_batch(phi, x_batch)  # Shape: (num_samples, c*w*h, c*w*h)
+
+            # Compute deviation from identity: ||J^T J - I||_F for each sample
+            I = torch.eye(c*w*h, device=device)
+            J_T_J_batch = torch.matmul(J_batch.transpose(1, 2), J_batch)  # Shape: (num_samples, c*w*h, c*w*h)
+            deviation_batch = J_T_J_batch - I
+            iso_scores = torch.norm(deviation_batch, p='fro', dim=(1, 2))  # Shape: (num_samples,)
+            iso_scores_list.extend(iso_scores.cpu().numpy())
+
+            # Compute volume regularization term for the entire batch
+            _, logabsdetjacobian_batch = phi._transform(x_batch, context=None)
+            volume_reg_batch = torch.mean(logabsdetjacobian_batch ** 2)  # Scalar for each batch
+            volume_regs_list.append(volume_reg_batch.item())
+
+            # Compute M2 = J^T Σ^{-1} J for the entire batch
+            sigma_inv_J_batch = torch.matmul(sigma_inv_matrix, J_batch)  # Shape: (num_samples, c*w*h, c*w*h)
+            M2_batch = torch.matmul(J_batch.transpose(1, 2), sigma_inv_J_batch)  # Shape: (num_samples, c*w*h, c*w*h)
+            jacobian_norm_batch = torch.norm(M2_batch, p='fro', dim=(1, 2))  # Shape: (num_samples,)
+            jacobian_norms_list.extend(jacobian_norm_batch.cpu().numpy())
+
+            # Randomly select K distinct columns to compute the Hessian-vector product
+            selected_columns = random.sample(range(c*w*h), K)
+
+            # Initialize the reduced Hessian-vector product matrix (rectangular shape)
+            H_v_matrix_batch = torch.zeros(num_samples, K, c*w*h, device=device)
+
+            for i, j in enumerate(tqdm(selected_columns, desc="Computing HVP")):
+                # Compute the Hessian-vector product for each selected component of phi(x)
+                _, hvp_j_batch = torch.autograd.functional.hvp(lambda x: scalar_phi_component_batch(j, x, phi), x_batch, v_batch_reshaped)
+                
+                # Flatten hvp_j_batch to fit in H_v_matrix_batch
+                H_v_matrix_batch[:, i] = hvp_j_batch.view(num_samples, c*w*h)  # Reshape to (num_samples, c*w*h)
+
+            # Compute the Frobenius norm of the reduced Hessian matrix
+            hessian_norm_batch = torch.norm(H_v_matrix_batch, p='fro', dim=(1, 2))  # Shape: (num_samples,)
+            hessian_norms_list.extend(hessian_norm_batch.cpu().numpy())
+
+            # Compute total Hessian M_total = H_v + M2 for the selected columns
+            M_total_batch = H_v_matrix_batch + M2_batch[:, selected_columns]  # Shape: (num_samples, K, c*w*h)
+
+            # Perform SVD on M_total for the selected columns in the batch
+            for i in range(num_samples):
+                singular_values = torch.linalg.svdvals(M_total_batch[i])  # Shape: (K,)
+                singular_values_list.append(singular_values.cpu().numpy())
+
+            batch_counter += 1
+
+    # Compute overall averages
+    iso_score = np.mean(iso_scores_list)
+    volume_reg = np.mean(volume_regs_list)
+    jacobian_norm = np.mean(jacobian_norms_list)
+    hessian_norm = np.mean(hessian_norms_list)
+    singular_values_avg = np.mean(np.stack(singular_values_list), axis=0)
+
+    # Return metrics
+    metrics = {
+        'iso_score': iso_score,
+        'volume_reg': volume_reg,
+        'jacobian_norm': jacobian_norm,
+        'hessian_norm': hessian_norm,
+        'singular_values_avg': singular_values_avg
+    }
+    return metrics
+
+
+def log_flow_metrics(writer, epoch, phi, psi, val_loader, device, num_batches=3, num_samples_per_batch=6, K=10):
+    """
+    Compute flow metrics and log results to TensorBoard.
+    
+    Args:
+        writer (SummaryWriter): TensorBoard writer instance.
+        epoch (int): Current epoch number.
+        phi (callable): Flow transformation function.
+        psi (torch.Tensor): Diagonal covariance matrix parameters.
+        val_loader (DataLoader): Validation data loader.
+        device (torch.device): Device to perform computations on (CPU/GPU).
+        num_batches (int, optional): Number of batches to process from the validation loader. Defaults to 3.
+        num_samples_per_batch (int, optional): Number of samples per batch. Defaults to 6.
+    """
+    # Start time for metrics computation
+    start_time = time.time()
+    
+    # Compute flow metrics
+    metrics = compute_flow_metrics(phi, psi, val_loader, device, num_batches=num_batches, num_samples_per_batch=num_samples_per_batch, K=K)
+    
+    # End time for metrics computation
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f'Computation_Time for flow metrics: {elapsed_time:.2f} seconds')
+
+    # Log metrics to TensorBoard
+    writer.add_scalar("Metrics/Isometry_Deviation", metrics['iso_score'], epoch)
+    writer.add_scalar("Metrics/Volume_Deviation", metrics['volume_reg'], epoch)
+    writer.add_scalar("Metrics/Hessian_Norm", metrics['hessian_norm'], epoch)
+    writer.add_scalar("Metrics/Jacobian_Norm", metrics['jacobian_norm'], epoch)
+    writer.add_scalar("Metrics/Computation_Time", elapsed_time, epoch)
+
+    # Log singular values of the total Hessian
+    singular_values_avg = metrics['singular_values_avg']
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(np.arange(len(singular_values_avg)), singular_values_avg, marker='o', linestyle='-', color='b')
+    ax.set_title('Singular Values of Total Hessian')
+    ax.set_xlabel('Index')
+    ax.set_ylabel('Singular Value')
+    ax.set_yscale('log')  # Set y-axis to log scale
+    ax.grid(True)
+    
+    # Log the figure to TensorBoard
+    writer.add_figure("Metrics/Singular_Values_Hessian", fig, epoch)
+    
+    # Close the figure to free up memory
+    plt.close(fig)
+
+
 def check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader, create_gif=False):
     num_samples = 64
     generate_and_plot_samples_images(phi, psi, num_samples, device, writer, epoch)
 
-    #orthogonality_deviation = check_orthogonality(phi, val_loader, device)
-    #writer.add_scalar("Orthogonality Deviation", orthogonality_deviation, epoch)
-
-    volume_pres_dev = deviation_from_volume_preservation(phi, val_loader, device)
-    writer.add_scalar("Volume Preservation Deviation", volume_pres_dev, epoch)
+    log_flow_metrics(writer, epoch, phi, psi, val_loader, device, num_batches=1, num_samples_per_batch=1)
 
     distribution = Unimodal(diffeomorphism=phi, strongly_convex=psi)
     manifold = DeformedGaussianPullbackManifold(distribution)

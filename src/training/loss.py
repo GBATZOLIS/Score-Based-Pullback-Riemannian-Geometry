@@ -1,7 +1,9 @@
 import torch
 import numpy as np
 from src.training.train_utils import get_score_fn, get_log_density_fn
+from .loss_utils import regularisation_term
 import torch.autograd as autograd
+import random 
 
 def get_loss_function(config):
     return LossFunctionWrapper(config)
@@ -12,8 +14,16 @@ class LossFunctionWrapper:
         self.args_std = config.get('std', 0.1)
         self.use_cv = config.get('use_cv', False)
         self.use_reg = config.get('use_reg', False)
+
         self.reg_factor = config.get('reg_factor', 1)
+        
+        self.lambda_iso = config.get('lambda_iso', 5)
+        self.lambda_vol = config.get('lambda_vol', 1)
+        self.lambda_hessian = config.get('lambda_hessian', 1)
+
         self.reg_type = config.get('reg_type', 'volume')
+        self.reg_iso_type = config.get('reg_iso_type', 'length')
+
         self.mcmc_steps = config.get('mcmc_steps', 20)
         self.epsilon = config.get('epsilon', 0.1)
 
@@ -36,42 +46,8 @@ class LossFunctionWrapper:
         elif self.loss_type == 'denoising score matching':
             return self.loss_fn(phi, psi, x, self.args_std, train, self.use_cv, self.use_reg, self.reg_factor, self.reg_type, device)
         elif self.loss_type == 'normalizing flow':
-            return self.loss_fn(phi, psi, x, train, self.use_reg, self.reg_factor, self.reg_type, device)
+            return self.loss_fn(phi, psi, x, train, self.use_reg, self.reg_factor, self.reg_type, self.reg_iso_type, self.lambda_iso, self.lambda_vol, self.lambda_hessian, device)
 
-
-
-def volume_regularisation(logabsdetjac):
-    """
-    Computes the volume preservation regularization term.
-    
-    :param logabsdetjac: The log absolute determinant of the Jacobian.
-    :return: The volume preservation regularization loss.
-    """
-    return torch.mean(torch.abs(logabsdetjac))
-
-
-def regularisation_term(reg_type, phi, x, train, device):
-    if reg_type=='isometry':
-        #promotes isometry regularisation
-
-        batch_size, *dims = x.shape
-        v = torch.randn(batch_size, *dims, device=device, requires_grad=True)
-        v_norm = v.view(batch_size, -1).norm(dim=1, keepdim=True).view(batch_size, *[1]*len(dims))
-        v = v / v_norm
-
-        if not train:
-            torch.set_grad_enabled(True)
-
-        _, Jv = torch.autograd.functional.jvp(lambda x: phi(x), (x,), (v,), create_graph=True)
-
-        if not train:
-            torch.set_grad_enabled(False)
-        
-        norms = Jv.view(batch_size, -1).norm(dim=1)
-        return torch.mean((norms - 1) ** 2)
-    elif reg_type == 'volume':
-        _, logabsdetjac = phi._transform(x, context=None)
-        return torch.mean(torch.abs(logabsdetjac))
 
 def get_energy_fn(phi, psi):
     """
@@ -142,7 +118,7 @@ def loglikelihood_maximisation(phi, psi, x, args_std, train=True, use_reg=False,
     
     return loss, density_learning_loss, reg_loss
 
-def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, reg_type='volume', device='cuda:0'):
+def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, reg_type='volume', reg_iso_type='length', lambda_iso=1.0, lambda_vol=1.0, lambda_hessian=1.0, device='cuda:0'):
     """
     Maximizes the log-likelihood with respect to the normalizing flow model.
     """
@@ -166,12 +142,19 @@ def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, 
     nll_loss = -torch.mean(log_p_x)
 
     # Regularization term if applicable
-    reg_loss = regularisation_term(reg_type, phi, x, train, device) if use_reg else torch.tensor(0.0, device=device)
+    if use_reg:
+        iso_reg, volume_reg, hessian_reg = regularisation_term(reg_type, phi, x, train, device, reg_iso_type, logabsdetjacobian, z, psi)
+        reg_loss = lambda_iso * iso_reg + lambda_vol * volume_reg + lambda_hessian * hessian_reg
+    else:
+        iso_reg = torch.tensor(0.0, device=device)
+        volume_reg = torch.tensor(0.0, device=device)
+        reg_loss = torch.tensor(0.0, device=device)
 
     # Total loss
     loss = nll_loss + reg_factor * reg_loss
 
-    return loss, nll_loss, reg_loss
+    return loss, nll_loss, reg_loss, iso_reg, volume_reg, hessian_reg
+
 
 
 

@@ -6,14 +6,140 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
-import imageio.v2 as imageio
+import imageio
 import os
 import argparse
 from src.unimodal.deformed_gaussian import DeformedGaussian
 from mpl_toolkits.mplot3d import Axes3D
-    
+
 # Enable anomaly detection
 torch.autograd.set_detect_anomaly(True)
+
+#Function to return the appropriate generation function based on dataset
+def get_generation_fn(args):
+    if args.dataset == 'single_banana':
+        num_samples, num_mcmc_samples, step_size = 2500, 1000, 0.1
+        shear, offset, a1, a2 = 1/9, 0., 1/4, 4
+        model = QuadraticBanana(shear, offset, torch.tensor([a1, a2]))
+        initial_value = torch.zeros((num_samples, 2), requires_grad=True)
+        return lambda: langevin_mcmc(model, num_mcmc_samples, step_size, initial_value)
+    
+    elif args.dataset == 'squeezed_single_banana':
+        num_samples, num_mcmc_samples, step_size = 5000, 2000, 0.1
+        shear, offset, a1, a2 = 1/9, 0., 1/81, 4
+        model = QuadraticBanana(shear, offset, torch.tensor([a1, a2]))
+        initial_value = torch.zeros((num_samples, 2), requires_grad=True)
+        return lambda: langevin_mcmc(model, num_mcmc_samples, step_size, initial_value)
+    
+    elif args.dataset == 'river':
+        num_samples, num_mcmc_samples, step_size = 5000, 2000, 0.1
+        shear, offset, a1, a2 = 2, 0, 1/25, 3
+        model = QuadraticRiver(shear, offset, torch.tensor([a1, a2]))
+        initial_value = torch.zeros((num_samples, 2), requires_grad=True)
+        return lambda: langevin_mcmc(model, num_mcmc_samples, step_size, initial_value)
+    
+    elif args.dataset == 'river3d':
+        num_samples = 10000
+        shear0, shear1 = 1, 2
+        variances=torch.tensor([1/1000, 1/1000, 3])
+        return lambda: generate_generalised_river_samples(num_samples, shear0=shear0, shear1=shear1, variances=variances)
+    
+    elif args.dataset == 'spherical':
+        num_samples, num_mcmc_samples, step_size = 5000, 2000, 0.1
+        variances = torch.tensor([0.02, torch.pi/16, torch.pi/16])
+        model = DeformedGaussian(spherical_diffeomorphism(), variances)
+        initial_value = torch.tensor([0.5, 0.5, 0.7071], requires_grad=True).unsqueeze(0).repeat(num_samples, 1).clone().detach().requires_grad_(True)
+        return lambda: langevin_mcmc(model, num_mcmc_samples, step_size, initial_value)
+    elif args.dataset.startswith('sinusoid'):
+        parts = args.dataset.split('_')
+        K, N = int(parts[1]), int(parts[2])
+        num_samples = 5000 * K * int(np.maximum(np.sqrt(N/5), 1)) #for N=100, we used K=1e5
+        return lambda: generate_generalised_sinusoid_samples(num_samples, K, N)
+    else:
+        raise ValueError(f"Unknown dataset: {args.dataset}")
+
+# Save function to handle saving the generated data
+def save_data(samples, save_dir, dataset):
+    """
+    Save the samples to train, validation, and test sets.
+    
+    Args:
+    - samples (torch.Tensor): Samples to save.
+    - save_dir (str): Directory to save the data.
+    - dataset (str): Name of the dataset.
+    """
+    final_samples = samples
+
+    # Calculate the sizes for train, validation, and test sets
+    num_samples = len(final_samples)
+    train_size = int(0.8 * num_samples)
+    val_size = int(0.1 * num_samples)
+
+    # Split the data
+    train_data = final_samples[:train_size]
+    val_data = final_samples[train_size:train_size + val_size]
+    test_data = final_samples[train_size + val_size:]
+
+    # Ensure the directory exists
+    save_path = os.path.join(save_dir, dataset)
+    os.makedirs(save_path, exist_ok=True)
+
+    # Save the datasets as .npy files
+    np.save(os.path.join(save_path, 'train.npy'), train_data)
+    np.save(os.path.join(save_path, 'val.npy'), val_data)
+    np.save(os.path.join(save_path, 'test.npy'), test_data)
+
+    print(f"Data saved to {save_path}.")
+
+
+def generate_generalised_sinusoid_samples(num_samples, K, N):
+    #K the dimension of the manifold
+    #N the ambient dimension
+    #shearing in the sinusoid formation
+    #variances dictate the manifold concentration
+    
+    # Extract variances for the latent space (manifold) and ambient space
+    manifold_variances = 3 * torch.ones(K)
+    ambient_variances = 1e-3 * torch.ones(N-K)
+
+    # Sample from the K-dimensional latent space (manifold)
+    z_samples = torch.randn(num_samples, K) * torch.sqrt(manifold_variances)
+
+    # Initialize random shears for the off-manifold (N-K) dimensions
+    off_manifold_shears = torch.rand(N - K, K) * (2 - 1) + 1  # Random values between [1, 2]
+
+    # Generate the off-manifold samples using the shear vectors and z_samples
+    off_manifold_means = []
+    for j in range(N - K):
+        shear_j = off_manifold_shears[j]  # Get the shear vector for the j-th off-manifold dimension
+        off_manifold_mean = torch.sin(z_samples @ shear_j.unsqueeze(1))  # Sinusoidal transformation for off-manifold
+        off_manifold_means.append(off_manifold_mean.squeeze(1))  # Squeeze to get correct shape
+
+    # Stack the off-manifold dimensions together
+    off_manifold_means = torch.stack(off_manifold_means, dim=1)
+
+    # Generate ambient samples for the remaining (N-K) dimensions
+    off_manifold_samples = off_manifold_means + torch.randn(num_samples, N - K) * torch.sqrt(ambient_variances)
+
+    # Combine the manifold and ambient samples
+    samples = torch.cat([off_manifold_samples, z_samples], dim=1)
+    
+    return samples
+
+
+# Function to generate samples for generalised river
+def generate_generalised_river_samples(num_samples, shear0=1, shear1=2, variances=torch.tensor([1/25, 1/25, 3])):
+    var_x0, var_x1, var_z = variances[0], variances[1], variances[2]
+
+    z_samples = torch.randn(num_samples) * torch.sqrt(var_z)
+    x0_means = torch.sin(shear0 * z_samples)
+    x1_means = torch.sin(shear1 * z_samples)
+
+    x0_samples = x0_means + torch.randn(num_samples) * torch.sqrt(var_x0)
+    x1_samples = x1_means + torch.randn(num_samples) * torch.sqrt(var_x1)
+
+    samples = torch.stack([x0_samples, x1_samples, z_samples], dim=1)
+    return samples
 
 def langevin_mcmc(model, num_samples, step_size, initial_value):
     # Ensure the initial value has requires_grad = True
@@ -62,26 +188,26 @@ def langevin_mcmc(model, num_samples, step_size, initial_value):
     print(f"Acceptance Rate: {acceptance_rate * 100:.2f}%")
     print(f"Total Rejections: {num_rejections}")
 
-    return samples
+    return samples[-1]
 
-def plot_samples(samples, log_density_values=None, x_grid=None, y_grid=None, step=None):
+def plot_samples(samples, step=None):
     dim = samples.shape[1]  # Determine the dimensionality of the samples
 
     if dim == 2:
-        # 2D plotting
+        # 2D plotting (similar to 3D scatter but in 2D)
         fig = plt.figure(figsize=(10, 8))  # Create figure object
-        if log_density_values is not None and x_grid is not None and y_grid is not None:
-            plt.contourf(x_grid.numpy(), y_grid.numpy(), np.exp(log_density_values), levels=50, cmap='viridis')
-        plt.scatter(samples[:, 0], samples[:, 1], color='red', s=10, label=f'Samples at step {step}')
-        plt.title('Langevin MCMC Samples on Log Density Contour' if log_density_values is not None else 'Langevin MCMC Samples')
-        plt.xlabel('X axis')
-        plt.ylabel('Y axis')
-        if log_density_values is not None:
-            plt.colorbar(label='Probability Density')
-        plt.legend()
-        plt.grid(True)
+        ax = fig.add_subplot(111)
+        ax.scatter(samples[:, 0], samples[:, 1], color='blue', s=10, label=f'Samples at step {step}')
+
+        # Setting the title and labels
+        ax.set_title('Langevin MCMC Samples in 2D', fontsize=14)
+        ax.set_xlabel('X axis', fontsize=12)
+        ax.set_ylabel('Y axis', fontsize=12)
+        ax.legend()
+
         plt.savefig(f'step_{step}.png' if step is not None else 'samples.png')
-        plt.close(fig)  # Close the figure after saving it
+        plt.show()  # Display the figure
+        plt.close(fig)  # Close the figure after showing it
 
     elif dim == 3:
         # 3D plotting
@@ -97,146 +223,29 @@ def plot_samples(samples, log_density_values=None, x_grid=None, y_grid=None, ste
         ax.legend()
 
         plt.savefig(f'step_{step}.png' if step is not None else 'samples.png')
-        plt.close(fig)  # Close the figure after saving it
+        plt.show()  # Display the figure
+        plt.close(fig)  # Close the figure after showing it
+
     else:
         raise ValueError("Samples must be 2D or 3D for plotting.")
 
-def plot_density_3d_slices(log_density_values, x_grid, y_grid, z_grid, slice_indices=[0, 5, 9], save_dir='./plots'):
-    """
-    Plot and save 3D density slices for specific z-values.
-    :param log_density_values: 3D array of log density values (reshaped to 10x10x10).
-    :param x_grid: Grid values for x.
-    :param y_grid: Grid values for y.
-    :param z_grid: Grid values for z.
-    :param slice_indices: List of indices along the z-axis for which to plot slices.
-    :param save_dir: Directory to save the plot images.
-    """
-    os.makedirs(save_dir, exist_ok=True)  # Ensure the save directory exists
-
-    for i, z_idx in enumerate(slice_indices):
-        fig = plt.figure(figsize=(8, 6))
-        ax = fig.add_subplot(111, projection='3d')
-        
-        # Plot the surface for the fixed z slice
-        surf = ax.plot_surface(x_grid[:, :, z_idx].numpy(), 
-                               y_grid[:, :, z_idx].numpy(), 
-                               np.exp(log_density_values[:, :, z_idx]),  # Plot the exponential of log-density
-                               cmap='viridis')
-        
-        ax.set_title(f'Log Density Slice at z={z_grid[0, 0, z_idx].item():.2f}')
-        ax.set_xlabel('X axis')
-        ax.set_ylabel('Y axis')
-        ax.set_zlabel('Density')
-
-        # Add color bar to the plot
-        fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5)
-
-        # Save the figure
-        save_path = os.path.join(save_dir, f'density_slice_z_{z_grid[0, 0, z_idx].item():.2f}.png')
-        plt.savefig(save_path)
-        plt.close(fig)  # Close the figure after saving
-
-    print(f'Saved density slice plots in {save_dir}')
 
 
 def main():
     parser = argparse.ArgumentParser(description='Run Langevin MCMC to generate samples and optional outputs.')
-    parser.add_argument('--dataset', type=str, choices=['spherical', 'single_banana', 'squeezed_single_banana', 'combined_elongated_gaussians', 'spiral', 'river'], required=True, help='Choose the dataset.')
+    parser.add_argument('--dataset', type=str, required=True, help='Choose the dataset.')
     parser.add_argument('--create_gif', action='store_true', help='Create a GIF of the sampling process.')
     parser.add_argument('--save_data', action='store_false', help='Save the last sample in the MCMC chain.')
     parser.add_argument('--save_dir', type=str, default='./data/', help='Directory to save the data.')
 
     args = parser.parse_args()
 
-    # Run the Langevin MCMC
-    num_samples = 1000 #5000
-    num_mcmc_samples = 1200
-    step_size = 0.11
-
-    if args.dataset == 'single_banana':
-        shear, offset, a1, a2 = 1/9, 0., 1/4, 4
-        model = QuadraticBanana(shear, offset, torch.tensor([a1, a2]))
-        initial_value = torch.zeros((num_samples, 2), requires_grad=True)
-    elif args.dataset == 'squeezed_single_banana':
-        shear, offset, a1, a2 = 1/9, 0., 1/81, 4
-        model = QuadraticBanana(shear, offset, torch.tensor([a1, a2]))
-        initial_value = torch.zeros((num_samples, 2), requires_grad=True)
-    elif args.dataset == 'river':
-        shear, offset, a1, a2 = 2, 0, 1/25, 3
-        model = QuadraticRiver(shear, offset, torch.tensor([a1, a2]))
-        initial_value = torch.zeros((num_samples, 2), requires_grad=True)
-    elif args.dataset == 'spherical':
-        variances = torch.tensor([0.02, torch.pi/8, torch.pi/8])
-        model = DeformedGaussian(spherical_diffeomorphism(), variances)
-        initial_value = torch.tensor([0.5, 0.5, 0.7071], requires_grad=True).unsqueeze(0).repeat(num_samples, 1).clone().detach().requires_grad_(True)
-
-
-
-    # Define the grid for visualization based on dimensionality
-    if initial_value.shape[1] == 2:
-        xx = torch.linspace(-12.0, 12.0, 500)
-        yy = torch.linspace(-12.0, 12.0, 500)
-        x_grid, y_grid = torch.meshgrid(xx, yy, indexing='ij')
-        xy_grid = torch.stack([x_grid.flatten(), y_grid.flatten()], dim=1)
-        log_density_values = model.log_density(xy_grid).reshape(500, 500).detach().numpy()
-        z_grid = None
-    else:
-        # 3D grid creation for log density
-        xx = torch.linspace(-1., 1., 10)
-        yy = torch.linspace(-1., 1., 10)
-        zz = torch.linspace(-1., 1., 10)
-        x_grid, y_grid, z_grid = torch.meshgrid(xx, yy, zz, indexing='ij')
-        xyz_grid = torch.stack([x_grid.flatten(), y_grid.flatten(), z_grid.flatten()], dim=1)
-        log_density_values = model.log_density(xyz_grid).reshape(10, 10, 10).detach().numpy()
-
-        # Plot 3D density slices for fixed z values
-        plot_density_3d_slices(log_density_values, x_grid, y_grid, z_grid, slice_indices=[0, 5, 9])
-
-
-        
-    interval_samples = langevin_mcmc(model, num_mcmc_samples, step_size, initial_value)
-    samples = interval_samples[-1].numpy()
-    plot_samples(samples, log_density_values, x_grid, y_grid, -1)
-
-    if args.create_gif:
-        # Generate plots and GIF
-        filenames = []
-        indices = np.linspace(0, num_mcmc_samples-1, 20, dtype=int)
-        for idx in indices:
-            samples = interval_samples[idx].numpy()
-            plot_samples(samples, log_density_values, x_grid, y_grid, idx)
-            filenames.append(f'step_{idx}.png')
-
-        with imageio.get_writer('langevin_mcmc.gif', mode='I', duration=0.5) as writer:
-            for filename in filenames:
-                image = imageio.imread(filename)
-                writer.append_data(image)
-
-        for filename in filenames:
-            os.remove(filename)  # Clean up files
+    generation_fn = get_generation_fn(args)
+    samples = generation_fn().numpy()
+    #plot_samples(samples, step=-1)
 
     if args.save_data:
-        # Save the last sample in the MCMC chain
-        final_samples = interval_samples[-1].numpy()
-
-        # Calculate the sizes for train, validation, and test sets
-        num_samples = len(final_samples)
-        train_size = int(0.8 * num_samples)
-        val_size = int(0.1 * num_samples)
-
-        # Split the data
-        train_data = final_samples[:train_size]
-        val_data = final_samples[train_size:train_size + val_size]
-        test_data = final_samples[train_size + val_size:]
-
-        # Ensure the directory exists
-        save_path = os.path.join(args.save_dir, args.dataset)
-        os.makedirs(save_path, exist_ok=True)
-
-        # Save the datasets as .npy files
-        np.save(os.path.join(save_path, 'train.npy'), train_data)
-        np.save(os.path.join(save_path, 'val.npy'), val_data)
-        np.save(os.path.join(save_path, 'test.npy'), test_data)
+        save_data(samples, args.save_dir, args.dataset)
 
 if __name__ == "__main__":
     main()
