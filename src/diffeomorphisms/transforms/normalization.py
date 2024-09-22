@@ -73,13 +73,8 @@ from src.diffeomorphisms import transforms
 
 
 class BatchNorm(transforms.Transform):
-    """Transform that performs batch normalization.
-
-    Limitations:
-        * It works only for 1-dim inputs.
-        * Inverse is not available in training mode, only in eval mode.
-    """
-
+    """Transform that performs batch normalization."""
+    
     def __init__(self, features, eps=1e-5, momentum=0.1, affine=True):
         if not utils.is_positive_int(features):
             raise TypeError('Number of features must be a positive integer.')
@@ -98,7 +93,7 @@ class BatchNorm(transforms.Transform):
     def weight(self):
         return F.softplus(self.unconstrained_weight) + self.eps
 
-    def forward(self, inputs, context=None):
+    def forward(self, inputs, context=None, detach_logdet=False):
         if inputs.dim() != 2:
             raise ValueError('Expected 2-dim inputs, got inputs of shape: {}'.format(inputs.shape))
 
@@ -114,9 +109,12 @@ class BatchNorm(transforms.Transform):
         logabsdet_ = torch.log(self.weight) - 0.5 * torch.log(var + self.eps)
         logabsdet = torch.sum(logabsdet_) * torch.ones(inputs.shape[0])
 
+        if detach_logdet:
+            logabsdet = logabsdet.detach()
+
         return outputs, logabsdet
 
-    def inverse(self, inputs, context=None):
+    def inverse(self, inputs, context=None, detach_logdet=False):
         if self.training:
             raise transforms.InverseNotAvailable(
                 'Batch norm inverse is only available in eval mode, not in training mode.')
@@ -128,18 +126,16 @@ class BatchNorm(transforms.Transform):
         logabsdet_ = - torch.log(self.weight) + 0.5 * torch.log(self.running_var + self.eps)
         logabsdet = torch.sum(logabsdet_) * torch.ones(inputs.shape[0])
 
+        if detach_logdet:
+            logabsdet = logabsdet.detach()
+
         return outputs, logabsdet
+
 
 
 class ActNorm(transforms.Transform):
     def __init__(self, features):
-        """
-        Transform that performs activation normalization. Works for 2D and 4D inputs. For 4D
-        inputs (images) normalization is performed per-channel, assuming BxCxHxW input shape.
-
-        Reference:
-        > D. Kingma et. al., Glow: Generative flow with invertible 1x1 convolutions, NeurIPS 2018.
-        """
+        """Transform that performs activation normalization."""
         if not utils.is_positive_int(features):
             raise TypeError('Number of features must be a positive integer.')
         super().__init__()
@@ -158,7 +154,7 @@ class ActNorm(transforms.Transform):
         else:
             return self.scale.view(1, -1), self.shift.view(1, -1)
 
-    def forward(self, inputs, context=None):
+    def forward(self, inputs, context=None, detach_logdet=False):
         device = inputs.device
         if inputs.dim() not in [2, 4]:
             raise ValueError('Expecting inputs to be a 2D or a 4D tensor.')
@@ -167,41 +163,46 @@ class ActNorm(transforms.Transform):
             self._initialize(inputs)
 
         scale, shift = self._broadcastable_scale_shift(inputs)
-        scale, shift = scale.to(device), shift.to(device)  # Ensure scale and shift are on the correct device
+        scale, shift = scale.to(device), shift.to(device)
 
         outputs = scale * inputs + shift
 
         if inputs.dim() == 4:
             batch_size, _, h, w = inputs.shape
-            logabsdet = h * w * torch.sum(self.log_scale) * torch.ones(batch_size, device=device)  # Ensure logabsdet is on the correct device
+            logabsdet = h * w * torch.sum(self.log_scale) * torch.ones(batch_size, device=device)
         else:
             batch_size, _ = inputs.shape
-            logabsdet = torch.sum(self.log_scale) * torch.ones(batch_size, device=device)  # Ensure logabsdet is on the correct device
+            logabsdet = torch.sum(self.log_scale) * torch.ones(batch_size, device=device)
+
+        if detach_logdet:
+            logabsdet = logabsdet.detach()
 
         return outputs, logabsdet
 
-    def inverse(self, inputs, context=None):
+    def inverse(self, inputs, context=None, detach_logdet=False):
         device = inputs.device
         if inputs.dim() not in [2, 4]:
             raise ValueError('Expecting inputs to be a 2D or a 4D tensor.')
 
         scale, shift = self._broadcastable_scale_shift(inputs)
-        scale, shift = scale.to(device), shift.to(device)  # Ensure scale and shift are on the correct device
+        scale, shift = scale.to(device), shift.to(device)
 
         outputs = (inputs - shift) / scale
 
         if inputs.dim() == 4:
             batch_size, _, h, w = inputs.shape
-            logabsdet = - h * w * torch.sum(self.log_scale) * torch.ones(batch_size, device=device)  # Ensure logabsdet is on the correct device
+            logabsdet = - h * w * torch.sum(self.log_scale) * torch.ones(batch_size, device=device)
         else:
             batch_size, _ = inputs.shape
-            logabsdet = - torch.sum(self.log_scale) * torch.ones(batch_size, device=device)  # Ensure logabsdet is on the correct device
+            logabsdet = - torch.sum(self.log_scale) * torch.ones(batch_size, device=device)
+
+        if detach_logdet:
+            logabsdet = logabsdet.detach()
 
         return outputs, logabsdet
 
     def _initialize(self, inputs):
-        """Data-dependent initialization, s.t. post-actnorm activations have zero mean and unit
-        variance. """
+        """Data-dependent initialization."""
         if inputs.dim() == 4:
             num_channels = inputs.shape[1]
             inputs = inputs.permute(0, 2, 3, 1).reshape(-1, num_channels)
@@ -213,4 +214,5 @@ class ActNorm(transforms.Transform):
             self.shift.data = -mu
 
         self.initialized = True
+
 

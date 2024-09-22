@@ -1,6 +1,7 @@
 import torch
 import random
 import functorch
+import torch.func as func
 
 def regularisation_term(reg_type, phi, x, train, device, reg_iso_type='length', logabsdetjac=None, phi_x=None, psi=None):
     if reg_type == 'isometry':
@@ -66,17 +67,18 @@ def isometry_regularisation(reg_iso_type, phi, x, train, device):
 
 def orthogonal_jacobian_regularisation(phi, x, device):
     # Compute the Jacobian using vmap and functorch for efficiency
-    def compute_jacobian(x_single):
-        # Apply jacrev to a single element, as vmap will handle batching
-        return torch.func.jacrev(lambda x: phi(x.unsqueeze(0)).squeeze(0))(x_single)
-
+    def flow_fn(x_single):
+        z = phi(x_single.unsqueeze(0), detach_logdet=True).squeeze(0)  # Ensure logabsdet is detached during Jacobian calculation
+        return z
 
     # Vectorize the Jacobian computation for the batch
-    jacobian = torch.vmap(compute_jacobian)(x)
+    jacobian = torch.vmap(func.jacrev(flow_fn))(x)
 
-    # Reshape Jacobian to (batch_size, input_dim, output_dim)
-    batch_size, *dims = x.shape
-    input_dim = x.shape[1]
+    # Flatten the input across all dimensions except batch size
+    batch_size = x.shape[0]
+    input_dim = x[0].numel()  # Calculate the total number of input dimensions after the batch dimension
+
+    # Reshape the Jacobian to (batch_size, input_dim, input_dim)
     jacobian = jacobian.view(batch_size, input_dim, input_dim)
 
     # Enforce orthogonality: J^T J should be close to identity matrix I
@@ -85,6 +87,7 @@ def orthogonal_jacobian_regularisation(phi, x, device):
     ortho_reg = torch.mean((JTJ - identity).norm(dim=(1, 2)) ** 2)
 
     return ortho_reg
+
 
 def length_regularisation(phi, x, v, train, device):
     batch_size, *dims = x.shape

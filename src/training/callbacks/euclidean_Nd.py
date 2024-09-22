@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from torch.autograd.functional import jacobian
 from torch.utils.tensorboard import SummaryWriter
 import time 
+import torch.func as func
 
 # For batch Jacobian and Hessian computations
 try:
@@ -57,28 +58,12 @@ def log_diagonal_values(psi, writer, epoch):
     writer.add_figure("Diagonal Values (Log Scale)", fig, epoch)
     plt.close(fig)
 
-def compute_jacobians_batch(phi, x_batch):
-    def phi_single_sample(x):
-        # x has shape (d,)
-        x = x.unsqueeze(0)  # Shape: (1, d)
-        phi_x = phi(x)  # Shape: (1, d)
-        return phi_x.squeeze(0)  # Shape: (d,)
-    
-    jacobians = []  # List to store the Jacobians for each point in the batch
-
-    # Loop over each point in the batch
-    for i in range(x_batch.size(0)):
-        # Compute the Jacobian for the i-th sample
-        x_single = x_batch[i]
-        J_single = torch.autograd.functional.jacobian(func=phi_single_sample, inputs=x_single, create_graph=False)
-        
-        # Append the computed Jacobian to the list
-        jacobians.append(J_single)
-
-    # Concatenate all the Jacobians along the batch dimension
-    J_batch = torch.stack(jacobians, dim=0)  # Shape will be [batch_size, d, d]
-
-    return J_batch
+def compute_jacobian_batch(flow, x):
+    def flow_fn(x_single):
+        z = flow(x_single.unsqueeze(0), detach_logdet=True).squeeze(0)  # Ensure logabsdet is detached during Jacobian calculation
+        return z
+    jacobian = torch.vmap(func.jacrev(flow_fn))(x)
+    return jacobian
 
 def compute_flow_metrics_fast(phi, psi, val_loader, device, num_batches=3, num_samples_per_batch=5):
     # Initialize accumulators for metrics
@@ -117,7 +102,8 @@ def compute_flow_metrics_fast(phi, psi, val_loader, device, num_batches=3, num_s
             v_batch = phi_x_batch * sigma_inv  # Shape: (num_samples, d)
 
             # Compute Jacobian J for the entire batch without tracking gradients
-            J_batch = compute_jacobians_batch(phi, x_batch) # Shape will be [batch_size, d, d]
+            J_batch = compute_jacobian_batch(phi, x_batch) # Shape will be [batch_size, d, d]
+            print(f'J_batch.size():{J_batch.size()}')
 
             # Compute deviation from identity: ||J^T J - I||_F for each sample
             I = torch.eye(d, device=device)

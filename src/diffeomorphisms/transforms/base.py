@@ -41,32 +41,51 @@ class CompositeTransform(Transform):
         self._transforms = nn.ModuleList(transforms)
 
     @staticmethod
-    def _cascade(inputs, funcs, context):
+    def _cascade(inputs, funcs, context, detach_logdet=False):
         batch_size = inputs.shape[0]
         device = inputs.device
         outputs = inputs
         total_logabsdet = torch.zeros(batch_size, device=device)
-        #print(total_logabsdet.size())
-        #print(f"Initial total_logabsdet device: {total_logabsdet.device}")
+
+        #if detach_logdet:
+        #    total_logabsdet = total_logabsdet.detach()
+        
+        #if detach_logdet:
+        #    print('---- Start of Cascade ----')
+        #    print(f"Initial total_logabsdet size: {total_logabsdet.size()}, detached: {not total_logabsdet.requires_grad}")
+
         for i, func in enumerate(funcs):
-            #print(f"Before transform {i} ({func.__class__.__name__}): inputs device: {outputs.device}")
-            outputs, logabsdet = func(outputs, context)
-            # Print the layer name and the shape of logabsdet
-            #print(f"Layer {i}: {func.__class__.__name__}, logabsdet size: {logabsdet.size()}")
-            #print(logabsdet.size())
-            #print(f"After transform {i} ({func.__class__.__name__}): outputs device: {outputs.device}, logabsdet device: {logabsdet.device}")
-            total_logabsdet += logabsdet
-            #print(f"After transform {i} ({func.__class__.__name__}): total_logabsdet device: {total_logabsdet.device}")
+            #if detach_logdet:
+            #    print(f"Before transform {i} ({func.__class__.__name__}):")
+            #    print(f"  Inputs size: {outputs.size()}, device: {outputs.device}, detached: {not outputs.requires_grad}")
+
+            # Perform the transformation
+            outputs, logabsdet = func(outputs, context, detach_logdet)
+
+            #if detach_logdet:
+            #    # Print the layer name and the shape of logabsdet
+            #    print(f"  Layer {i}: {func.__class__.__name__}, logabsdet size: {logabsdet.size()}, detached: {not logabsdet.requires_grad}")
+            #    print(f"  Outputs size after transform: {outputs.size()}, detached: {not outputs.requires_grad}")
+            #    print(f'total_logabsdet.size() - logabsdet.size():{total_logabsdet.size()} - {logabsdet.size()}')
+
+            if not detach_logdet:
+                total_logabsdet += logabsdet
+
+        #if detach_logdet:
+        #    print('---- End of Cascade ----')
         return outputs, total_logabsdet
 
 
-    def forward(self, inputs, context=None):
-        funcs = self._transforms
-        return self._cascade(inputs, funcs, context)
 
-    def inverse(self, inputs, context=None):
+
+
+    def forward(self, inputs, context=None, detach_logdet=False):
+        funcs = self._transforms
+        return self._cascade(inputs, funcs, context, detach_logdet)
+
+    def inverse(self, inputs, context=None, detach_logdet=False):
         funcs = (transform.inverse for transform in self._transforms[::-1])
-        return self._cascade(inputs, funcs, context)
+        return self._cascade(inputs, funcs, context, detach_logdet)
 
 
 class MultiscaleCompositeTransform(Transform):
