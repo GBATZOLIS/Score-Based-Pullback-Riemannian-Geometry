@@ -53,7 +53,7 @@ def get_generation_fn(args):
     elif args.dataset.startswith('sinusoid'):
         parts = args.dataset.split('_')
         K, N = int(parts[1]), int(parts[2])
-        num_samples = 5000 * K * int(np.maximum(np.sqrt(N/5), 1)) #for N=100, we used K=1e5
+        num_samples = 5000 * K * int(np.maximum(np.sqrt(N/5), 1)) #for N=100, we used num_samples=1e5 for K=1 and num_samples=2e-5 for K=10. Otherwise we used the formula.
         return lambda: generate_generalised_sinusoid_samples(num_samples, K, N)
     else:
         raise ValueError(f"Unknown dataset: {args.dataset}")

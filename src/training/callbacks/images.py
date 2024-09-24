@@ -154,39 +154,95 @@ def log_diagonal_values(psi, writer, epoch):
     plt.close(fig)
 
 
-def compute_jacobians_batch(phi, x_batch):
-    def phi_single_sample(x):
-        # x has shape (c, w, h)
-        x = x.unsqueeze(0)  # Shape: (1, c, w, h)
-        phi_x = phi(x)  # Shape: (1, c*w*h) since phi flattens the output
-        return phi_x.squeeze(0)  # Shape: (c*w*h,)
-
-    jacobians = []  # List to store the Jacobians for each point in the batch
-
-    # Loop over each point in the batch
-    for i in range(x_batch.size(0)):
-        # Compute the Jacobian for the i-th sample
-        x_single = x_batch[i]  # Shape: (c, w, h)
-        
-        # Compute Jacobian: Initially, this will have shape (c, w, h, c, w, h)
-        J_single = torch.autograd.functional.jacobian(func=phi_single_sample, inputs=x_single, create_graph=False)
-        
-        # Reshape J_single from (c, w, h, c, w, h) to (c*w*h, c*w*h)
-        J_single_reshaped = J_single.view(x_single.numel(), -1)  # Shape: (c*w*h, c*w*h)
-        
-        # Append the reshaped Jacobian to the list
-        jacobians.append(J_single_reshaped)
-
-    # Concatenate all the Jacobians along the batch dimension
-    J_batch = torch.stack(jacobians, dim=0)  # Shape: [batch_size, c*w*h, c*w*h]
-
-    return J_batch
+def compute_jacobian_batch(flow, x):
+    def flow_fn(x_single):
+        z = flow(x_single.unsqueeze(0), detach_logdet=True).squeeze(0)  # Ensure logabsdet is detached during Jacobian calculation
+        return z
+    jacobian = torch.vmap(torch.func.jacrev(flow_fn))(x)
+    batch_size = x.shape[0]
+    input_dim = x[0].numel()
+    jacobian = jacobian.view(batch_size, input_dim, input_dim) # Shape: (batchsize, c*w*h, c*w*h)
+    return jacobian
 
 
-import torch
-import numpy as np
-import random
-from tqdm import tqdm
+def compute_batched_hessian_vmap(x_batch, v_batch_reshaped, phi, selected_columns):
+    """
+    Compute the batched Hessian-vector product for multiple selected columns using vmap.
+
+    Args:
+        x_batch (torch.Tensor): Input batch with shape (num_samples, c, w, h).
+        v_batch_reshaped (torch.Tensor): Reshaped vector for Hessian-vector product computation.
+        phi (callable): Flow transformation function.
+        selected_columns (torch.Tensor): Indices of the selected columns.
+
+    Returns:
+        torch.Tensor: Hessian-vector product matrix of shape (num_samples, K, c*w*h).
+    """
+    # Step 1: Define a function to compute the Hessian-vector product using grad and vmap
+    def hessian_vector_product(fun, x, v):
+        """
+        Compute the Hessian-vector product using torch.func.
+
+        Args:
+            fun (callable): Scalar function whose Hessian-vector product we are computing.
+            x (torch.Tensor): Input tensor with respect to which we compute the Hessian.
+            v (torch.Tensor): Vector used for the Hessian-vector product.
+
+        Returns:
+            torch.Tensor: The Hessian-vector product (same shape as x).
+        """
+        # Compute the gradient of the function with respect to x
+        grad_fun = torch.func.grad(fun)
+
+        # Compute the Jacobian-vector product using vmap over the gradient function
+        Jv = torch.func.vmap(grad_fun, in_dims=(0))(x) * v  # Vector-Jacobian product
+
+        return Jv
+
+    # Step 2: Define a function that extracts the scalar component of phi(x)
+    def scalar_phi_component_fun(x, idx):
+        """
+        Extract the idx-th component of the output of phi for the entire batch.
+
+        Args:
+            x (torch.Tensor): Input batch.
+            idx (int): Index of the component to extract.
+
+        Returns:
+            torch.Tensor: The sum of the idx-th component of phi(x) for the batch.
+        """
+        return phi(x)[:, idx].sum()
+
+    # Step 3: Create a function that computes the Hessian-vector product for each selected column
+    def hvp_for_column(x, v, idx):
+        """
+        Compute the Hessian-vector product for the idx-th column.
+
+        Args:
+            x (torch.Tensor): Input batch.
+            v (torch.Tensor): Reshaped vector for the Hessian-vector product computation.
+            idx (int): Index of the column.
+
+        Returns:
+            torch.Tensor: The Hessian-vector product for the idx-th column.
+        """
+        # Define the scalar function for the idx-th component of phi(x)
+        scalar_fun = lambda x: scalar_phi_component_fun(x, idx)
+
+        # Compute the Hessian-vector product
+        return hessian_vector_product(scalar_fun, x, v)
+
+    # Step 4: Use vmap to vectorize the Hessian-vector product computation over the selected columns
+    vmap_hvp_fun = torch.func.vmap(hvp_for_column, in_dims=(None, None, 0))
+
+    # Apply the vmap function to compute the Hessian-vector products in parallel
+    H_v_matrix_batch = vmap_hvp_fun(x_batch, v_batch_reshaped, selected_columns)
+
+    # Step 5: Reshape the result to the desired shape
+    H_v_matrix_batch = H_v_matrix_batch.view(x_batch.size(0), len(selected_columns), -1)  # (num_samples, K, c*w*h)
+
+    return H_v_matrix_batch
+
 
 def scalar_phi_component_batch(i, x, phi):
     """
@@ -258,7 +314,8 @@ def compute_flow_metrics(phi, psi, val_loader, device, num_batches=1, num_sample
             v_batch_reshaped = v_batch.view(num_samples, c, w, h)
 
             # Compute Jacobian J for the entire batch without tracking gradients
-            J_batch = compute_jacobians_batch(phi, x_batch)  # Shape: (num_samples, c*w*h, c*w*h)
+            J_batch = compute_jacobian_batch(phi, x_batch)  # Shape: (num_samples, c*w*h, c*w*h)
+            print(J_batch.size())
 
             # Compute deviation from identity: ||J^T J - I||_F for each sample
             I = torch.eye(c*w*h, device=device)
@@ -376,7 +433,8 @@ def check_manifold_properties_images(phi, psi, writer, epoch, device, val_loader
     num_samples = 64
     generate_and_plot_samples_images(phi, psi, num_samples, device, writer, epoch)
 
-    log_flow_metrics(writer, epoch, phi, psi, val_loader, device, num_batches=1, num_samples_per_batch=1)
+    K = 30 if epoch==0 else phi.d
+    log_flow_metrics(writer, epoch, phi, psi, val_loader, device, num_batches=1, num_samples_per_batch=10, K=K)
 
     distribution = Unimodal(diffeomorphism=phi, strongly_convex=psi)
     manifold = DeformedGaussianPullbackManifold(distribution)
