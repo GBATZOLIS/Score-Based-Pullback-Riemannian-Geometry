@@ -2,7 +2,9 @@
 
 This is the official implementation of the paper [Score-Based Pullback Riemannian Geometry](https://arxiv.org/abs/2410.01950). 
 
-In our work, we propose a score-based pullback Riemannian metric, giving closed-form geodesics and interpretable autoencoding, capturing the intrinsic dimensionality & geometry of data! We show that this geometry can naturally be extracted by adapting the normalizing flow framework with isometry regularization and base distribution anisotropy.
+In our work, we propose a score-based pullback Riemannian metric, giving **closed-form geodesics** and **interpretable autoencoding**, capturing the **intrinsic dimensionality** & **geometry** of data! 
+
+We show that this geometry can naturally be extracted by adapting the normalizing flow framework with **isometry regularization** and **base distribution anisotropy**.
 
 ![Approximate Data Manifolds Learned by the RAE](./rae.png)
 
