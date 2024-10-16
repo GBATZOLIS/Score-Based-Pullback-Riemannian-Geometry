@@ -6,7 +6,7 @@ This repository contains the official implementation of the paper [Score-Based P
 
 ## Introduction
 
-In this work, we propose a novel method for learning suitable pullback Riemannian geometries by adapting normalizing flows (NFs). Our approach introduces two key modifications to the standard NF training paradigm:
+In this work, we propose a novel method for learning score-based pullback Riemannian geometries by adapting normalizing flows (NFs). Our approach introduces two key modifications to the standard NF training paradigm:
 
 1. **Anisotropic Base Distribution**: Parameterizing the diagonal elements of the covariance matrix to introduce anisotropy.
 2. **\(l^2\)-Isometry Regularization**: Regularizing the flow to be approximately \(l^2\)-isometric.
