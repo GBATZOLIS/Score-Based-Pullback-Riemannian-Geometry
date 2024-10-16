@@ -1,10 +1,13 @@
 # Score-Based Pullback Riemannian Geometry
 
-Welcome to the code repository for our paper **"Score-Based Pullback Riemannian Geometry"**. This repository contains all the code and configuration files needed to reproduce the experiments presented in the paper.
+This is the official implementation of the paper [Score-Based Pullback Riemannian Geometry](https://arxiv.org/abs/2410.01950). 
 
-[Paper on arXiv](https://arxiv.org/abs/2410.01950)
+In our work, we propose a score-based pullback Riemannian metric, giving closed-form geodesics and interpretable autoencoding, capturing the intrinsic dimensionality & geometry of data! We show that this geometry can naturally be extracted by adapting the normalizing flow framework with isometry regularization and base distribution anisotropy.
+
+![Approximate Data Manifolds Learned by the RAE](./rae.png)
 
 ---
+
 
 ## Table of Contents
 
