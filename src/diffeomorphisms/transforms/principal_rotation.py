@@ -16,7 +16,7 @@ class PrincipalRotationTransform(transforms.Transform):
         else:
             self.mean = None
 
-    def forward(self, inputs, context=None):
+    def forward(self, inputs, context=None, detach_logdet=False):
         #print(inputs.size())
         # Flatten the input tensor if necessary
         original_shape = inputs.shape
@@ -40,11 +40,14 @@ class PrincipalRotationTransform(transforms.Transform):
         
         # Since U is orthogonal, logabsdet is 0
         logabsdet = torch.zeros(inputs.size(0), device=inputs.device)
+
+        if detach_logdet:
+            logabsdet = logabsdet.detach()
         
         #print(outputs.size())
         return outputs, logabsdet
 
-    def inverse(self, inputs, context=None):
+    def inverse(self, inputs, context=None, detach_logdet=False):
         # Flatten the input tensor if necessary
         original_shape = inputs.shape
         B = original_shape[0]

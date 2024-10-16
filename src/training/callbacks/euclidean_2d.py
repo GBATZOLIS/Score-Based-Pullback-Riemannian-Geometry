@@ -7,6 +7,36 @@ from src.riemannian_autoencoder.deformed_gaussian_riemannian_autoencoder import 
 from src.training.callbacks.utils import check_orthogonality
 from src.unimodal import Unimodal
 
+def log_diagonal_values(psi, writer, epoch):
+    # Access the diagonal values of psi
+    diagonal_values = psi.diagonal.detach().cpu().numpy()
+    diagonal_values = np.sort(diagonal_values)[::-1]
+
+    # Create normal scale plot
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(np.arange(len(diagonal_values)), diagonal_values, marker='o', linestyle='-', color='b')
+    ax.set_title('Diagonal Values of psi (Normal Scale)')
+    ax.set_xlabel('Index')
+    ax.set_ylabel('Diagonal Value')
+    ax.grid(True)
+
+    # Save the plot to a temporary buffer and log to TensorBoard
+    writer.add_figure("Diagonal Values (Normal Scale)", fig, epoch)
+    plt.close(fig)
+
+    # Create log scale plot
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(np.arange(len(diagonal_values)), diagonal_values, marker='o', linestyle='-', color='b')
+    ax.set_yscale('log')
+    ax.set_title('Diagonal Values of psi (Log Scale)')
+    ax.set_xlabel('Index')
+    ax.set_ylabel('Log Diagonal Value')
+    ax.grid(True)
+
+    # Save the plot to a temporary buffer and log to TensorBoard
+    writer.add_figure("Diagonal Values (Log Scale)", fig, epoch)
+    plt.close(fig)
+
 def generate_and_plot_2Dsamples(phi, psi, num_samples, device, writer, epoch):
     d = phi.args.d
     base_samples = torch.randn(num_samples, d, device=device) * psi.diagonal.sqrt()
@@ -47,6 +77,11 @@ def check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, 
     plt.colorbar(contour, ax=ax)
     writer.add_figure("Density", fig, epoch)
     plt.close(fig)
+
+    if special_points is None:
+        data = next(iter(val_loader))
+        val_batch = data[0] if isinstance(data, list) else data
+        special_points = val_batch[:2]
 
     x0 = torch.tensor(special_points[0], device=device)
     x1 = torch.tensor(special_points[1], device=device)
@@ -117,3 +152,6 @@ def check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, 
     ax.plot(rae_decode_p[:, 0], rae_decode_p[:, 1], color="orange")
     writer.add_figure("Riemannian Autoencoder", fig, epoch)
     plt.close(fig)
+
+    # Log diagonal values of psi
+    log_diagonal_values(psi, writer, epoch)

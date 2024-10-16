@@ -16,16 +16,25 @@ class Multimodal:
 
     def log_density(self, x):
         N = x.shape[0]
-        psi_phi_x = torch.zeros((N,self.m))
+        
+        # Ensure psi_phi_x is on the same device as x
+        psi_phi_x = torch.zeros((N, self.m), device=x.device)
+        
         if self.single_diffeomorphism:
             phi_x = self.phi.forward(x)
             for i in range(self.m):
-                psi_phi_x[:,i] = self.psi[i].forward(phi_x)
+                psi_phi_x[:, i] = self.psi[i].forward(phi_x)
         else:
             for i in range(self.m):
                 phi_x = self.phi[i].forward(x)
-                psi_phi_x[:,i] = self.psi[i].forward(phi_x)
-        result = torch.log(torch.sum(self.weights[None] * torch.exp(-psi_phi_x),-1))
+                psi_phi_x[:, i] = self.psi[i].forward(phi_x)
+
+        # Ensure weights are on the same device as x
+        weights = self.weights.to(x.device)
+        
+        # Optimize the computation using torch.logsumexp for numerical stability
+        result = torch.logsumexp(-psi_phi_x + torch.log(weights)[None, :], dim=-1)
+
         return result
     
     def score(self, x):
@@ -58,11 +67,3 @@ class Multimodal:
             x.requires_grad_(False)
 
         return cloned_gradients
-    
-    # def forward(self, x): 
-    #     """ evaluate pseudo score """
-    #     return self.psi.grad_forward(self.phi.forward(x))
-    
-    # def differential_forward(self, x, X):
-    #     """ evaluate differential of pseudo score """
-    #     return self.psi.differential_grad_forward(self.phi.forward(x), self.phi.differential_forward(x, X))

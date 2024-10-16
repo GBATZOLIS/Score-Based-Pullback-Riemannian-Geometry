@@ -8,7 +8,7 @@ class standard_normal_psi(StronglyConvex):
     where A is a diagonal matrix with positive entries. In this version, the diagonal elements of A are fixed to 1.
     """
 
-    def __init__(self, d):
+    def __init__(self, d, offset=None, stds=None, use_softplus=False):
         """
         Initialize the StandardNormalPsi function with a specified dimension.
 

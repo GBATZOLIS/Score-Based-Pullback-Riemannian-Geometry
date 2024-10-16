@@ -196,18 +196,44 @@ class image_diffeomorphism(Diffeomorphism):
             mean=mean
         )
 
-    def forward(self, x):
-        out, logabsdetjacobian = self._transform(x, context=None)
+    def forward(self, x, detach_logdet=False):
+        """
+        Forward pass through the image diffeomorphism.
+        :param x: Input tensor, shape (B, C, H, W).
+        :param detach_logdet: Whether to detach the logabsdetjacobian from the computation graph.
+        :return: Transformed tensor and logabsdetjacobian.
+        """
+        out, logabsdetjacobian = self._transform(x, context=None, detach_logdet=detach_logdet)
         return out
 
-    def inverse(self, y):
-        out, logabsdetjacobian = self._transform.inverse(y, context=None)
+    def inverse(self, y, detach_logdet=False):
+        """
+        Inverse pass through the image diffeomorphism.
+        :param y: Input tensor, shape (B, C, H, W).
+        :param detach_logdet: Whether to detach the logabsdetjacobian from the computation graph.
+        :return: Inverse-transformed tensor and logabsdetjacobian.
+        """
+        out, logabsdetjacobian = self._transform.inverse(y, context=None, detach_logdet=detach_logdet)
         return out
 
     def differential_forward(self, x, X):
+        """
+        Compute the differential map of phi at x for a vector X.
+        
+        :param x: A batch of points, N x C x H x W.
+        :param X: A batch of tangent vectors, N x C x H x W.
+        :return: A batch of transformed tangent vectors, N x C x H x W.
+        """
         _, jvp_result = jvp(lambda x: self._transform(x, context=None)[0], (x,), (X,))
         return jvp_result
 
     def differential_inverse(self, y, Y):
+        """
+        Compute the differential map of the inverse of phi at y for a vector Y.
+        
+        :param y: A batch of points, N x C x H x W.
+        :param Y: A batch of tangent vectors, N x C x H x W.
+        :return: A batch of transformed tangent vectors, N x C x H x W.
+        """
         _, jvp_result = jvp(lambda y: self._transform.inverse(y, context=None)[0], (y,), (Y,))
         return jvp_result

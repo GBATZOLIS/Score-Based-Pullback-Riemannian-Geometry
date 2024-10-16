@@ -16,12 +16,17 @@ def tile(x, n):
     return x_
 
 
-def sum_except_batch(x, num_batch_dims=1):
+def sum_except_batch(x, num_batch_dims=1, detach_logdet=False):
     """Sums all elements of `x` except for the first `num_batch_dims` dimensions."""
     if not utils.is_nonnegative_int(num_batch_dims):
         raise TypeError('Number of batch dimensions must be a non-negative integer.')
     reduce_dims = list(range(num_batch_dims, x.ndimension()))
+
+    if detach_logdet:
+        x = x.detach()
+        
     return torch.sum(x, dim=reduce_dims)
+
 
 
 def split_leading_dim(x, shape):

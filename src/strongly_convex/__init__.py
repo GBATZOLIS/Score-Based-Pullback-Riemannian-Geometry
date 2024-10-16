@@ -1,12 +1,12 @@
 import torch.nn as nn
 import importlib
 
-def get_strongly_convex(config):
+def get_strongly_convex(config, offset=None, stds=None):
     strongly_convex_class = config.get('strongly_convex_class', 'learnable_psi')
     module_name = f'src.strongly_convex.{strongly_convex_class.lower()}'
     module = importlib.import_module(module_name)
     dataset_class = getattr(module, strongly_convex_class)
-    return dataset_class(config.d)
+    return dataset_class(config.d, offset, stds, config.get('use_softplus', False))
 
 class StronglyConvex(nn.Module):
     """ Base class describing a strongly convex function psi: R^d \to R """

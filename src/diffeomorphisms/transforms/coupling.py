@@ -63,7 +63,7 @@ class CouplingTransform(transforms.Transform):
     def num_transform_features(self):
         return len(self.transform_features)
 
-    def forward(self, inputs, context=None):
+    def forward(self, inputs, context=None, detach_logdet=False):
         if inputs.dim() not in [2, 4]:
             raise ValueError('Inputs must be a 2D or a 4D tensor.')
 
@@ -77,7 +77,8 @@ class CouplingTransform(transforms.Transform):
         transform_params = self.transform_net(identity_split, context)
         transform_split, logabsdet = self._coupling_transform_forward(
             inputs=transform_split,
-            transform_params=transform_params
+            transform_params=transform_params,
+            detach_logdet=detach_logdet
         )
 
         if self.unconditional_transform is not None:
@@ -88,10 +89,9 @@ class CouplingTransform(transforms.Transform):
         outputs = torch.empty_like(inputs)
         outputs[:, self.identity_features, ...] = identity_split
         outputs[:, self.transform_features, ...] = transform_split
-
         return outputs, logabsdet
 
-    def inverse(self, inputs, context=None):
+    def inverse(self, inputs, context=None, detach_logdet=False):
         if inputs.dim() not in [2, 4]:
             raise ValueError('Inputs must be a 2D or a 4D tensor.')
 
@@ -124,7 +124,7 @@ class CouplingTransform(transforms.Transform):
         """Number of features to output for each transform dimension."""
         raise NotImplementedError()
 
-    def _coupling_transform_forward(self, inputs, transform_params):
+    def _coupling_transform_forward(self, inputs, transform_params, detach_logdet=False):
         """Forward pass of the coupling transform."""
         raise NotImplementedError()
 
@@ -147,10 +147,14 @@ class GeneralIncompressibleFlowTransform(CouplingTransform):
         shift = self.t
         return scale, shift
 
-    def _coupling_transform_forward(self, inputs, transform_params):
+    def _coupling_transform_forward(self, inputs, transform_params, detach_logdet):
         scale, shift = self._scale_and_shift(transform_params)
         outputs = inputs * scale + shift
         logabsdet = torch.zeros(inputs.shape[0], device=inputs.device)
+
+        if detach_logdet:
+            logabsdet = logabsdet.detach()
+
         return outputs, logabsdet
 
     def _coupling_transform_inverse(self, inputs, transform_params):
@@ -172,14 +176,15 @@ class AffineCouplingTransform(CouplingTransform):
         unconstrained_scale = transform_params[:, self.num_transform_features:, ...]
         shift = transform_params[:, :self.num_transform_features, ...]
         # scale = (F.softplus(unconstrained_scale) + 1e-3).clamp(0, 3)
-        scale = torch.sigmoid(unconstrained_scale + 2) + 1e-3
+        scale = torch.sigmoid(unconstrained_scale + 2) + 1e-3 #we used this so far.
+        #scale = F.softplus(unconstrained_scale) + 1e-3
         return scale, shift
 
-    def _coupling_transform_forward(self, inputs, transform_params):
+    def _coupling_transform_forward(self, inputs, transform_params, detach_logdet):
         scale, shift = self._scale_and_shift(transform_params)
         log_scale = torch.log(scale)
         outputs = inputs * scale + shift
-        logabsdet = utils.sum_except_batch(log_scale, num_batch_dims=1)
+        logabsdet = utils.sum_except_batch(log_scale, num_batch_dims=1, detach_logdet=detach_logdet)
         return outputs, logabsdet
 
     def _coupling_transform_inverse(self, inputs, transform_params):
@@ -187,6 +192,7 @@ class AffineCouplingTransform(CouplingTransform):
         log_scale = torch.log(scale)
         outputs = (inputs - shift) / scale
         logabsdet = -utils.sum_except_batch(log_scale, num_batch_dims=1)
+        #logabsdet = logabsdet.unsqueeze(-1)
         return outputs, logabsdet
 
 
@@ -207,13 +213,13 @@ class AdditiveCouplingTransform(AffineCouplingTransform):
 
 
 class PiecewiseCouplingTransform(CouplingTransform):
-    def _coupling_transform_forward(self, inputs, transform_params):
-        return self._coupling_transform(inputs, transform_params, inverse=False)
+    def _coupling_transform_forward(self, inputs, transform_params, detach_logdet=False):
+        return self._coupling_transform(inputs, transform_params, inverse=False, detach_logdet=detach_logdet)
 
     def _coupling_transform_inverse(self, inputs, transform_params):
         return self._coupling_transform(inputs, transform_params, inverse=True)
 
-    def _coupling_transform(self, inputs, transform_params, inverse=False):
+    def _coupling_transform(self, inputs, transform_params, inverse=False, detach_logdet=False):
         if inputs.dim() == 4:
             b, c, h, w = inputs.shape
             # For images, reshape transform_params from Bx(C*?)xHxW to BxCxHxWx?
@@ -223,11 +229,11 @@ class PiecewiseCouplingTransform(CouplingTransform):
             # For 2D data, reshape transform_params from Bx(D*?) to BxDx?
             transform_params = transform_params.reshape(b, d, -1)
 
-        outputs, logabsdet = self._piecewise_cdf(inputs, transform_params, inverse)
+        outputs, logabsdet = self._piecewise_cdf(inputs, transform_params, inverse, detach_logdet)
 
         return outputs, utils.sum_except_batch(logabsdet)
 
-    def _piecewise_cdf(self, inputs, transform_params, inverse=False):
+    def _piecewise_cdf(self, inputs, transform_params, inverse=False, detach_logdet=False):
         raise NotImplementedError()
 
 
@@ -264,7 +270,7 @@ class PiecewiseLinearCouplingTransform(PiecewiseCouplingTransform):
     def _transform_dim_multiplier(self):
         return self.num_bins
 
-    def _piecewise_cdf(self, inputs, transform_params, inverse=False):
+    def _piecewise_cdf(self, inputs, transform_params, inverse=False, detach_logdet=False):
         unnormalized_pdf = transform_params
 
         if self.tails is None:
@@ -324,7 +330,7 @@ class PiecewiseQuadraticCouplingTransform(PiecewiseCouplingTransform):
         else:
             return self.num_bins * 2 + 1
 
-    def _piecewise_cdf(self, inputs, transform_params, inverse=False):
+    def _piecewise_cdf(self, inputs, transform_params, inverse=False, detach_logdet=False):
         unnormalized_widths = transform_params[..., :self.num_bins]
         unnormalized_heights = transform_params[..., self.num_bins:]
 
@@ -389,7 +395,7 @@ class PiecewiseCubicCouplingTransform(PiecewiseCouplingTransform):
     def _transform_dim_multiplier(self):
         return self.num_bins * 2 + 2
 
-    def _piecewise_cdf(self, inputs, transform_params, inverse=False):
+    def _piecewise_cdf(self, inputs, transform_params, inverse=False, detach_logdet=False):
         unnormalized_widths = transform_params[..., :self.num_bins]
         unnormalized_heights = transform_params[..., self.num_bins:2*self.num_bins]
         unnorm_derivatives_left = transform_params[..., 2*self.num_bins][..., None]
@@ -462,7 +468,7 @@ class PiecewiseRationalQuadraticCouplingTransform(PiecewiseCouplingTransform):
         else:
             return self.num_bins * 3 + 1
 
-    def _piecewise_cdf(self, inputs, transform_params, inverse=False):
+    def _piecewise_cdf(self, inputs, transform_params, inverse=False, detach_logdet=False):
         unnormalized_widths = transform_params[..., :self.num_bins]
         unnormalized_heights = transform_params[..., self.num_bins:2*self.num_bins]
         unnormalized_derivatives = transform_params[..., 2 * self.num_bins:]
@@ -486,6 +492,7 @@ class PiecewiseRationalQuadraticCouplingTransform(PiecewiseCouplingTransform):
                 'tail_bound': self.tail_bound
             }
 
+        # Pass the detach_logdet argument to the spline function
         return spline_fn(
             inputs=inputs,
             unnormalized_widths=unnormalized_widths,
@@ -495,6 +502,7 @@ class PiecewiseRationalQuadraticCouplingTransform(PiecewiseCouplingTransform):
             min_bin_width=self.min_bin_width,
             min_bin_height=self.min_bin_height,
             min_derivative=self.min_derivative,
+            detach_logdet=detach_logdet,  # Pass this argument
             **spline_kwargs
         )
 

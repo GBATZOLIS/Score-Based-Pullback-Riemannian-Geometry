@@ -9,7 +9,7 @@ from src.training.train_utils import EMA, load_config, load_model, save_model, r
 from src.training.optim_utils import get_optimizer_and_scheduler
 from src.training.callbacks import check_manifold_properties, check_manifold_properties_images
 from src.training.loss import get_loss_function
-from src.training.plot_utils import plot_data
+from src.training.plot_utils import plot_data, plot_variances, log_diagonal_values
 from src.training.data_utils import compute_mean_distance_and_sigma
 from tqdm import tqdm
 from torch.autograd.functional import jvp
@@ -42,14 +42,15 @@ def main(config_path):
 
     # Initialize the models
     # Compute PCA rotation matrix and mean if the flag is enabled
-    U, mean = None, None
+    U, mean, stds = None, None, None
     if config.get('premultiplication_by_U', False):
-        U, mean = get_principal_components(train_loader)
+        U, mean, stds = get_principal_components(train_loader, config.std)
         print(f'U.size(): {U.size()}')
         print(f'mean: {mean}')
+        print(f'stds: {stds[:30]}')
 
     phi = get_diffeomorphism(config, U=U, mean=mean)  # Pass the PCA matrix and mean if applicable
-    psi = get_strongly_convex(config)
+    psi = get_strongly_convex(config, stds=stds)
 
     ## Print model summaries
     phi_total_params, phi_trainable_params = count_parameters(phi)
@@ -79,8 +80,27 @@ def main(config_path):
         config, phi, ema_phi, psi, ema_psi, load_model, get_optimizer_and_scheduler, total_steps, train_loader
     )
 
+    if start_epoch == 0:
+        if config.get('premultiplication_by_U', False):
+            plot_variances(writer, stds, start_epoch)
+        else:
+            log_diagonal_values(psi, writer, start_epoch)
+
     # Get the appropriate loss function
     loss_fn = get_loss_function(config)
+
+    '''CODE FOR SANITY VALIDATION CHECK'''
+    # Switch to evaluation mode and apply EMA shadow before starting the training
+    ema_phi.apply_shadow()
+    ema_psi.apply_shadow()
+    phi.eval()
+    psi.eval()
+    # Perform sanity validation check before training
+    print("Performing sanity validation check before training...")
+    check_manifold_properties(config.dataset, phi, psi, writer, 0, device, val_loader, config.d)
+    # Restore the original weights after the sanity check
+    ema_phi.restore()
+    ema_psi.restore()
 
     # Training and Validation loop
     for epoch in range(start_epoch, config.epochs):
@@ -91,6 +111,10 @@ def main(config_path):
         total_loss = 0
         total_density_learning_loss = 0
         total_reg_loss = 0
+        total_iso_reg_loss = 0
+        total_volume_reg_loss = 0
+        total_hessian_reg_loss = 0  # Added for Hessian loss
+
         for data in train_iterator:
             if isinstance(data, list):
                 x = data[0]
@@ -98,12 +122,14 @@ def main(config_path):
                 x = data
 
             x = x.to(device)
-            
-            loss, density_learning_loss, reg_loss = loss_fn(phi, psi, x, train=True, device=device)
+
+            # Compute the loss, density learning loss, and individual regularization losses
+            loss, density_learning_loss, reg_loss, iso_reg, volume_reg, hessian_reg = loss_fn(phi, psi, x, train=True, device=device)
 
             optimizer.zero_grad()
             loss.backward()
 
+            # Clip gradients to avoid exploding gradients
             torch.nn.utils.clip_grad_norm_(list(phi.parameters()) + list(psi.parameters()), max_norm=1)
             optimizer.step()
 
@@ -113,39 +139,63 @@ def main(config_path):
             if scheduler:  # Step the scheduler if it's being used
                 scheduler.step()
 
+            # Log the losses for TensorBoard
             writer.add_scalar("Loss/Train Step", loss.item(), step)
             writer.add_scalar(f"{loss_fn.loss_name} Train Step", density_learning_loss.item(), step)
             writer.add_scalar("Loss/Regularization Train Step", reg_loss.item(), step)
+            writer.add_scalar("Loss/Isometry Regularization Train Step", iso_reg.item(), step)
+            writer.add_scalar("Loss/Volume Regularization Train Step", volume_reg.item(), step)
+            writer.add_scalar("Loss/Hessian Regularization Train Step", hessian_reg.item(), step)  # Log Hessian loss
 
+            # Optionally log the learning rate every 10 steps
             if step % 10 == 0:
                 current_lr = optimizer.param_groups[0]['lr']
                 writer.add_scalar("Learning Rate", current_lr, step)
 
             step += 1
+
+            # Update progress bar with current loss
             train_iterator.set_postfix(loss=loss.item())
+
+            # Accumulate losses for the epoch averages
             total_loss += loss.item()
             total_density_learning_loss += density_learning_loss.item()
-            if reg_loss is not None:
-                total_reg_loss += reg_loss.item()
+            total_reg_loss += reg_loss.item()
+            total_iso_reg_loss += iso_reg.item()
+            total_volume_reg_loss += volume_reg.item()
+            total_hessian_reg_loss += hessian_reg.item()  # Accumulate Hessian loss
 
+        # Compute average losses for the entire training epoch
         avg_train_loss = total_loss / len(train_loader)
         avg_train_density_learning_loss = total_density_learning_loss / len(train_loader)
-        avg_train_reg_loss = total_reg_loss / len(train_loader) if total_reg_loss > 0 else 0
+        avg_train_reg_loss = total_reg_loss / len(train_loader)
+        avg_train_iso_reg_loss = total_iso_reg_loss / len(train_loader)
+        avg_train_volume_reg_loss = total_volume_reg_loss / len(train_loader)
+        avg_train_hessian_reg_loss = total_hessian_reg_loss / len(train_loader)  # Compute average Hessian loss
 
+        # Log the average losses for TensorBoard
         writer.add_scalar("Loss/Train", avg_train_loss, epoch)
         writer.add_scalar(f"{loss_fn.loss_name} Train", avg_train_density_learning_loss, epoch)
         writer.add_scalar("Loss/Regularization Train", avg_train_reg_loss, epoch)
-        
-        # Validation
+        writer.add_scalar("Loss/Isometry Regularization Train", avg_train_iso_reg_loss, epoch)
+        writer.add_scalar("Loss/Volume Regularization Train", avg_train_volume_reg_loss, epoch)
+        writer.add_scalar("Loss/Hessian Regularization Train", avg_train_hessian_reg_loss, epoch)  # Log average Hessian loss
+
+        # Switch to evaluation mode for validation
         ema_phi.apply_shadow()
         ema_psi.apply_shadow()
 
         phi.eval()
         psi.eval()
+
         val_iterator = tqdm(val_loader, desc=f"Validation Epoch {epoch+1}/{config.epochs}", leave=False)
         total_val_loss = 0
         total_val_density_learning_loss = 0
         total_val_reg_loss = 0
+        total_val_iso_reg_loss = 0
+        total_val_volume_reg_loss = 0
+        total_val_hessian_reg_loss = 0  # Added for Hessian loss
+
         with torch.no_grad():
             for data in val_iterator:
                 if isinstance(data, list):
@@ -155,47 +205,70 @@ def main(config_path):
 
                 x = x.to(device)
 
-                val_loss, val_density_learning_loss, val_reg_loss = loss_fn(phi, psi, x, train=False, device=device)
+                # Compute the validation loss, density learning loss, and individual regularization losses
+                val_loss, val_density_learning_loss, val_reg_loss, val_iso_reg, val_volume_reg, val_hessian_reg = loss_fn(phi, psi, x, train=False, device=device)
 
+                # Accumulate validation losses for the epoch averages
                 total_val_loss += val_loss.item()
                 total_val_density_learning_loss += val_density_learning_loss.item()
-                if val_reg_loss is not None:
-                    total_val_reg_loss += val_reg_loss.item()
+                total_val_reg_loss += val_reg_loss.item()
+                total_val_iso_reg_loss += val_iso_reg.item()
+                total_val_volume_reg_loss += val_volume_reg.item()
+                total_val_hessian_reg_loss += val_hessian_reg.item()  # Accumulate Hessian loss
+
+                # Update progress bar with current validation loss
                 val_iterator.set_postfix(val_loss=val_loss.item())
 
+        # Compute average losses for the entire validation epoch
         avg_val_loss = total_val_loss / len(val_loader)
         avg_val_density_learning_loss = total_val_density_learning_loss / len(val_loader)
-        avg_val_reg_loss = total_val_reg_loss / len(val_loader) if total_val_reg_loss > 0 else 0
+        avg_val_reg_loss = total_val_reg_loss / len(val_loader)
+        avg_val_iso_reg_loss = total_val_iso_reg_loss / len(val_loader)
+        avg_val_volume_reg_loss = total_val_volume_reg_loss / len(val_loader)
+        avg_val_hessian_reg_loss = total_val_hessian_reg_loss / len(val_loader)  # Compute average Hessian loss
+
+        # Log the average validation losses for TensorBoard
         writer.add_scalar("Loss/Validation", avg_val_loss, epoch)
         writer.add_scalar(f"{loss_fn.loss_name} Validation", avg_val_density_learning_loss, epoch)
         writer.add_scalar("Loss/Regularization Validation", avg_val_reg_loss, epoch)
+        writer.add_scalar("Loss/Isometry Regularization Validation", avg_val_iso_reg_loss, epoch)
+        writer.add_scalar("Loss/Volume Regularization Validation", avg_val_volume_reg_loss, epoch)
+        writer.add_scalar("Loss/Hessian Regularization Validation", avg_val_hessian_reg_loss, epoch)  # Log average Hessian loss
 
+        # Print the epoch results
         print(f"Epoch {epoch+1}/{config.epochs}: Train Loss = {avg_train_loss:.4f}, Val Loss = {avg_val_loss:.4f}")
 
+        # Log any manifold checks if required
         if (epoch + 1) % config.eval_log_frequency == 0:
             check_manifold_properties(config.dataset, phi, psi, writer, epoch, device, val_loader, config.d)
-        
+
+        # Restore the shadow variables for the Exponential Moving Average (EMA)
         ema_phi.restore()
         ema_psi.restore()
 
+        # Early stopping logic: check if validation loss has improved
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
 
+        # If the model doesn't improve for 'patience' epochs, stop training
         if epochs_no_improve >= config.get('patience_epochs', 100):
             print(f"Early stopping at epoch {epoch + 1} due to no improvement in validation loss for {config.patience_epochs} consecutive epochs.")
             break
-        
-        # Checkpoint saving
+
+        # Save checkpoints every 'checkpoint_frequency' epochs
         if (epoch + 1) % config.checkpoint_frequency == 0:
             save_model(phi, ema_phi, psi, ema_psi, epoch, avg_val_loss, 
-                       checkpoint_dir, best_checkpoints, step, 
-                       best_val_loss, epochs_no_improve, optimizer, scheduler)
+                    checkpoint_dir, best_checkpoints, step, 
+                    best_val_loss, epochs_no_improve, optimizer, scheduler)
 
+    # Close the writer after training is complete
     writer.close()
     print("Training completed.")
+
+
 
 if __name__ == "__main__":
     import argparse

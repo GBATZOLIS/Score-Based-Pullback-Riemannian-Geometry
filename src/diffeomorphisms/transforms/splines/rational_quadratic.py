@@ -19,7 +19,8 @@ def unconstrained_rational_quadratic_spline(inputs,
                                             tail_bound=1.,
                                             min_bin_width=DEFAULT_MIN_BIN_WIDTH,
                                             min_bin_height=DEFAULT_MIN_BIN_HEIGHT,
-                                            min_derivative=DEFAULT_MIN_DERIVATIVE):
+                                            min_derivative=DEFAULT_MIN_DERIVATIVE,
+                                            detach_logdet=False):  # Added detach_logdet
     inside_interval_mask = (inputs >= -tail_bound) & (inputs <= tail_bound)
     outside_interval_mask = ~inside_interval_mask
 
@@ -46,7 +47,8 @@ def unconstrained_rational_quadratic_spline(inputs,
         left=-tail_bound, right=tail_bound, bottom=-tail_bound, top=tail_bound,
         min_bin_width=min_bin_width,
         min_bin_height=min_bin_height,
-        min_derivative=min_derivative
+        min_derivative=min_derivative,
+        detach_logdet=detach_logdet  # Added detach_logdet
     )
 
     return outputs, logabsdet
@@ -59,7 +61,8 @@ def rational_quadratic_spline(inputs,
                               left=0., right=1., bottom=0., top=1.,
                               min_bin_width=DEFAULT_MIN_BIN_WIDTH,
                               min_bin_height=DEFAULT_MIN_BIN_HEIGHT,
-                              min_derivative=DEFAULT_MIN_DERIVATIVE):
+                              min_derivative=DEFAULT_MIN_DERIVATIVE,
+                              detach_logdet=False):  # Added detach_logdet
     if torch.min(inputs) < left or torch.max(inputs) > right:
         raise transforms.InputOutsideDomain()
 
@@ -132,6 +135,10 @@ def rational_quadratic_spline(inputs,
                                                      + input_derivatives * (1 - root).pow(2))
         logabsdet = torch.log(derivative_numerator) - 2 * torch.log(denominator)
 
+        # Detach logabsdet if requested
+        if detach_logdet:
+            logabsdet = logabsdet.detach()
+
         return outputs, -logabsdet
     else:
         theta = (inputs - input_cumwidths) / input_bin_widths
@@ -147,5 +154,9 @@ def rational_quadratic_spline(inputs,
                                                      + 2 * input_delta * theta_one_minus_theta
                                                      + input_derivatives * (1 - theta).pow(2))
         logabsdet = torch.log(derivative_numerator) - 2 * torch.log(denominator)
+
+        # Detach logabsdet if requested
+        if detach_logdet:
+            logabsdet = logabsdet.detach()
 
         return outputs, logabsdet

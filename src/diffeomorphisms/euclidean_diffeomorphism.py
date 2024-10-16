@@ -82,22 +82,22 @@ class euclidean_diffeomorphism(Diffeomorphism):
             *[get_base_transform_fn(args)(i) for i in range(args.num_flow_steps)]
         ])
 
-    def forward(self, x):
+    def forward(self, x, detach_logdet=False):
         """
         Forward pass through the diffeomorphism.
         :param x: Input tensor, shape (B, C, H, W) or (B, D)
         :return: Transformed tensor
         """
-        out, logabsdetjacobian = self._transform(x, context=None)
+        out, logabsdetjacobian = self._transform(x, context=None, detach_logdet=detach_logdet)
         return out
 
-    def inverse(self, y):
+    def inverse(self, y, detach_logdet=False):
         """
         Inverse pass through the diffeomorphism.
         :param y: Input tensor, shape (B, C, H, W) or (B, D)
         :return: Inverse-transformed tensor
         """
-        out, logabsdetjacobian = self._transform.inverse(y, context=None)
+        out, logabsdetjacobian = self._transform.inverse(y, context=None, detach_logdet=detach_logdet)
         return out
 
     def differential_forward(self, x, X):

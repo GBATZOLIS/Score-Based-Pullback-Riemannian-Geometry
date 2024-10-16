@@ -225,9 +225,9 @@ def resume_training(config, phi, ema_phi, psi, ema_psi, load_model_func, get_opt
 
         # Compare weights after loading
         phi_l2_distance = compute_l2_distance(original_phi_weights, save_model_weights_for_comparison(phi))
-        psi_l2_distance = compute_l2_distance(original_psi_weights, save_model_weights_for_comparison(psi))
+        #psi_l2_distance = compute_l2_distance(original_psi_weights, save_model_weights_for_comparison(psi))
         print(f"L2 distance for Phi model: {phi_l2_distance}")
-        print(f"L2 distance for Psi model: {psi_l2_distance}")
+        #print(f"L2 distance for Psi model: {psi_l2_distance}")
         print(f"Resuming training from epoch {epoch + 1}")        
         return epoch + 1, global_step, best_checkpoints, best_val_loss, epochs_no_improve, optimizer, scheduler
     else:
