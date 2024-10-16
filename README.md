@@ -11,7 +11,7 @@ In this work, we propose a novel method for learning score-based pullback Rieman
 1. **Anisotropic Base Distribution**: Parameterizing the diagonal elements of the covariance matrix to introduce anisotropy.
 2. **\(l^2\)-Isometry Regularization**: Regularizing the flow to be approximately \(l^2\)-isometric.
 
-These innovations result in **closed-form geodesics** and **interpretable autoencoding**, capturing the **intrinsic dimensionality** and **geometry** of data. We evaluate our method through:
+These modifications result in **closed-form geodesics** and **interpretable autoencoding**, capturing the **intrinsic dimensionality** and **geometry** of data. We evaluate our method through:
 
 - **Manifold Mapping Experiments**: Assessing the accuracy and stability of learned manifold mappings.
 - **Riemannian Autoencoder (RAE) Experiments**: Demonstrating the capability of our method to generate robust RAEs.
