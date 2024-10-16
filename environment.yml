@@ -1,0 +1,21 @@
+name: riemannian-geo
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - numpy
+  - matplotlib
+  - pandas
+  - scikit-learn
+  - scipy
+  - tqdm
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.8
+  - tensorboard
+  - pip
+  - pip:
+      - ml-collections

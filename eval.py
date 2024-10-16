@@ -75,25 +75,20 @@ def main(config_path):
     psi = psi.to(device)
     
     rae_projection(psi, phi, tensorboard_dir, device, train_loader)
-    #rae_evaluation(psi, phi, test_loader, tensorboard_dir, device)
+    rae_evaluation(psi, phi, test_loader, tensorboard_dir, device)
 
     #compute geodesic error and the geodesic variation error
-    #learned_pullback_manifold = get_learned_pullback_manifold(phi, psi)
-    #ground_truth_pullback_manifold = get_ground_truth_pullback_manifold(config)
+    learned_pullback_manifold = get_learned_pullback_manifold(phi, psi)
+    ground_truth_pullback_manifold = get_ground_truth_pullback_manifold(config)
 
     # Evaluate manifold maps and plot exponential maps and geodesics
     #evaluate_manifold_maps(learned_pullback_manifold, ground_truth_pullback_manifold, test_loader, device, writer, epoch)
 
-    #geodesic_error_mean, geodesic_error_std = geodesic_error(learned_pullback_manifold, ground_truth_pullback_manifold, test_loader, device)
-    #variation_error_mean, variation_error_std = geodesic_variation_error(learned_pullback_manifold, ground_truth_pullback_manifold, test_loader, device)
+    geodesic_error_mean, geodesic_error_std = geodesic_error(learned_pullback_manifold, ground_truth_pullback_manifold, test_loader, device)
+    variation_error_mean, variation_error_std = geodesic_variation_error(learned_pullback_manifold, ground_truth_pullback_manifold, test_loader, device)
 
-    #print(f'geodesic error (mean/std):({geodesic_error_mean:.4f}/{geodesic_error_std:.4f})')
-    #print(f'variation error (mean/std):({variation_error_mean:.4f}/{variation_error_std:.4f})')
-
-    # Evaluate and log manifold properties
-    #check_manifold_properties(config.dataset, phi, psi, writer, epoch, device, val_loader, config.d, True)
-    
-
+    print(f'geodesic error (mean/std):({geodesic_error_mean:.4f}/{geodesic_error_std:.4f})')
+    print(f'variation error (mean/std):({variation_error_mean:.4f}/{variation_error_std:.4f})')
 
     # Restore original parameters after evaluation
     ema_phi.restore()

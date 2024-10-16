@@ -8,8 +8,8 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/sinusoid/1_100"
-    config.experiment = "our_method_rq_tuned_weighting"
-    config.eval_log_frequency = 25
+    config.experiment = "affine_jacobian_iso_vol_weights_2_1"
+    config.eval_log_frequency = 20
 
     # Model settings
     ## Strongly convex function settings
@@ -17,7 +17,7 @@ def get_config():
     
     ## Diffeomorphism settings
     config.diffeomorphism_class = 'euclidean_diffeomorphism'
-    config.base_transform_type = 'rq'
+    config.base_transform_type = 'affine'
     config.hidden_features = 64
     config.num_transform_blocks = 2
     config.use_batch_norm = 0
@@ -25,19 +25,22 @@ def get_config():
     config.num_bins = 128
     config.apply_unconditional_transform = 0
     config.min_bin_width = 1e-3
-    config.num_flow_steps = 8
+    config.num_flow_steps = 16
     config.premultiplication_by_U = False # new flag for premultiplication by U.T
 
     # Training settings
     config.epochs = 2000
-    config.patience_epochs = 50
+    config.patience_epochs = 200
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'
     config.std = 0. #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
     config.use_reg = True
-    config.reg_factor = 2
-    config.iso_vol_ratio_weight = 5 #iso_reg_weight/iso_vol_weight
+    config.reg_factor = 1
+    config.lambda_iso = 2 #default=1.
+    config.lambda_vol = 1
+    config.lambda_hessian = 1
     config.reg_type = 'isometry+volume'
+    config.reg_iso_type = 'orthogonal-jacobian'
     config.use_cv = False
 
     # Data settings
@@ -45,7 +48,7 @@ def get_config():
     config.dataset = 'sinusoid_1_100'
     config.data_path = "./data"
     config.d = 100
-    config.batch_size = 128
+    config.batch_size = 64
     config.data_range = [-8, 8]
     
     # Device settings
@@ -56,7 +59,7 @@ def get_config():
     config.learning_rate = 3e-4
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = None
+    config.checkpoint = '/home/gb511/riemannian_geo/results/sinusoid/1_100/affine_jacobian_iso_vol_weights_2_1/checkpoints/checkpoint_epoch_794_loss_-191.827.pth'
     
     # Reproducibility
     config.seed = 12
