@@ -1,6 +1,6 @@
 # Score-Based Pullback Riemannian Geometry
 
-This is the official implementation of the paper [Score-Based Pullback Riemannian Geometry](https://arxiv.org/abs/2410.01950). 
+This is the official implementation of the paper [Score-Based Pullback Riemannian Geometry](https://arxiv.org/abs/2410.01950) by Willem Diepeveen*, Georgios Batzolis*, Zakhar Shumaylov, Carola-Bibiane Schönlieb.
 
 In our work, we propose a score-based pullback Riemannian metric, giving **closed-form geodesics** and **interpretable autoencoding**, capturing the **intrinsic dimensionality** & **geometry** of data! 
 
