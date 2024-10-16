@@ -48,7 +48,7 @@ def get_config():
     config.data_range = [-15,15]
     
     # Device settings
-    config.device = "cuda" if torch.cuda.is_available() else "cpu"
+    config.device = "cpu" #"cuda" if torch.cuda.is_available() else "cpu"
 
     # Optimization settings
     config.use_scheduler = True

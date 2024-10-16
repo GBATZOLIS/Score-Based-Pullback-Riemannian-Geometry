@@ -16,7 +16,7 @@ def check_manifold_properties(dataset, phi, psi, writer, epoch, device, val_load
         range = [-8., 8.]
         special_points = [[1.,5*np.pi/4], [-1.,-5*np.pi/4]]
         check_manifold_properties_2D_distributions(phi, psi, writer, epoch, device, val_loader, range, special_points)
-    elif dataset.startswith('sinusoid'):
+    elif dataset.startswith('sinusoid') or dataset.startswith('hemisphere'):
         parts = dataset.split('_')
         K, N = int(parts[1]), int(parts[2])
         range, special_points = None, None

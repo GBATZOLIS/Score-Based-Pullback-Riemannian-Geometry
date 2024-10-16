@@ -43,6 +43,10 @@ def get_generation_fn(args):
         shear0, shear1 = 1, 2
         variances=torch.tensor([1/1000, 1/1000, 3])
         return lambda: generate_generalised_river_samples(num_samples, shear0=shear0, shear1=shear1, variances=variances)
+    elif args.dataset == 'spiral':
+        num_samples = 15000
+        num_revolutions = 2  # Use number of revolutions from arguments
+        return lambda: generate_spiral_samples_2d(num_samples, num_revolutions=num_revolutions)
     
     elif args.dataset == 'spherical':
         num_samples, num_mcmc_samples, step_size = 5000, 2000, 0.1
@@ -53,8 +57,13 @@ def get_generation_fn(args):
     elif args.dataset.startswith('sinusoid'):
         parts = args.dataset.split('_')
         K, N = int(parts[1]), int(parts[2])
-        num_samples = 5000 * K * int(np.maximum(np.sqrt(N/5), 1)) #for N=100, we used num_samples=1e5 for K=1 and num_samples=2e-5 for K=10. Otherwise we used the formula.
+        num_samples = 100000 #5000 * K * int(np.maximum(np.sqrt(N/5), 1)) #for N=100, we used 1e5 for K=1, 1.5e-5 for K=5 and 2e-5 for K=10. Otherwise we used the formula.
         return lambda: generate_generalised_sinusoid_samples(num_samples, K, N)
+    elif args.dataset.startswith('hemisphere'):
+        parts = args.dataset.split('_')
+        K, N = int(parts[1]), int(parts[2])
+        num_samples = 5000 * K * int(np.maximum(np.sqrt(N/5), 1))
+        return lambda: generate_hemisphere_samples(num_samples, K, N)
     else:
         raise ValueError(f"Unknown dataset: {args.dataset}")
 
@@ -92,6 +101,28 @@ def save_data(samples, save_dir, dataset):
     print(f"Data saved to {save_path}.")
 
 
+def generate_spiral_samples_2d(num_samples, num_revolutions=3):
+    """
+    Generates samples of a spiral dataset in 2D.
+
+    Args:
+    - num_samples (int): Number of samples to generate.
+    - num_revolutions (int): Number of revolutions of the spiral.
+        
+    Returns:
+    - samples (torch.Tensor): The generated spiral samples.
+    """
+    theta = torch.linspace(0, num_revolutions * 2 * np.pi, num_samples)  # Angular coordinate
+    r = theta  # Radial coordinate equals the angular coordinate
+
+    # 2D spiral
+    x = r * torch.cos(theta)  # X-coordinates
+    y = r * torch.sin(theta)  # Y-coordinates
+    samples = torch.stack([x, y], dim=1)  # Shape (num_samples, 2)
+
+    return samples
+
+
 def generate_generalised_sinusoid_samples(num_samples, K, N):
     #K the dimension of the manifold
     #N the ambient dimension
@@ -125,6 +156,50 @@ def generate_generalised_sinusoid_samples(num_samples, K, N):
     samples = torch.cat([off_manifold_samples, z_samples], dim=1)
     
     return samples
+
+def generate_hemisphere_samples(num_samples, K, N, alpha=5, beta=5):
+    """
+    Generates samples from the upper hemisphere of S^K and embeds them in N dimensions using a random isometry.
+
+    Args:
+    - num_samples (int): Number of samples to generate.
+    - K (int): Dimension of the manifold (S^K).
+    - N (int): Ambient dimension to embed into.
+    - alpha (float): Shape parameter for the Beta distribution (controls emphasis on central values).
+    - beta (float): Shape parameter for the Beta distribution (controls emphasis on central values).
+        
+    Returns:
+    - samples (torch.Tensor): The generated samples in N dimensions.
+    """
+    # Use a Beta distribution to sample theta_1, emphasizing central values
+    beta_dist = torch.distributions.Beta(alpha, beta)
+    theta_1 = beta_dist.sample((num_samples,)) * (np.pi / 2)  # Scale to [0, pi/2]
+
+    # Uniformly sample the other angles from [0, pi]
+    other_angles = torch.rand(num_samples, K) * np.pi
+
+    # Generate Cartesian coordinates from spherical angles
+    manifold_samples = []
+    for i in range(num_samples):
+        angles = torch.cat((theta_1[i:i+1], other_angles[i]), dim=0)
+        sin_prod = 1.0  # Initialize as scalar
+        cartesian_coords = []
+        for theta in angles[:-1]:
+            cartesian_coords.append(sin_prod * torch.cos(theta))
+            sin_prod *= torch.sin(theta)
+        cartesian_coords.append(sin_prod)  # Final coordinate
+        cartesian_coords = torch.tensor(cartesian_coords)  # Convert list of scalars to tensor
+        manifold_samples.append(cartesian_coords)
+
+    manifold_samples = torch.stack(manifold_samples)  # Shape: (num_samples, K+1)
+
+    # Random isometric embedding into N dimensions (N >= K+1)
+    randomness_generator = torch.Generator().manual_seed(0)
+    embedding_matrix = torch.randn((N, K + 1), generator=randomness_generator)
+    q, _ = torch.linalg.qr(embedding_matrix, mode='reduced')  # Create orthogonal embedding matrix
+    embedded_samples = manifold_samples @ q.T  # Apply isometric embedding
+
+    return embedded_samples
 
 
 # Function to generate samples for generalised river
@@ -229,7 +304,54 @@ def plot_samples(samples, step=None):
     else:
         raise ValueError("Samples must be 2D or 3D for plotting.")
 
+def plot_and_save_samples(samples, step=None, save_path=None):
+    """
+    Plots and saves the samples in the current directory with high quality.
 
+    Args:
+    - samples (torch.Tensor): The samples to plot.
+    - step (int): Optional step for naming the saved file.
+    - save_path (str): Path to save the plot.
+    """
+    dim = samples.shape[1]  # Determine the dimensionality of the samples
+
+    if dim == 2:
+        # 2D plotting
+        fig = plt.figure(figsize=(10, 8), dpi=300)  # Create figure object with high DPI for quality
+        ax = fig.add_subplot(111)
+        ax.scatter(samples[:, 0], samples[:, 1], color='blue', s=10)
+
+        # Remove legends and titles
+        ax.set_title('')
+        ax.set_xlabel('')
+        ax.set_ylabel('')
+
+        # Save with high quality
+        plot_filename = save_path if save_path else f'samples_{step}.png'
+        plt.savefig(plot_filename, bbox_inches='tight', dpi=300)
+        plt.show()  # Display the figure
+        plt.close(fig)  # Close the figure after showing it
+
+    elif dim == 3:
+        # 3D plotting
+        fig = plt.figure(figsize=(10, 8), dpi=300)  # Create figure object with high DPI for quality
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(samples[:, 0], samples[:, 1], samples[:, 2], color='blue', s=10)
+
+        # Remove legends and titles
+        ax.set_title('')
+        ax.set_xlabel('')
+        ax.set_ylabel('')
+        ax.set_zlabel('')
+
+        # Save with high quality
+        plot_filename = save_path if save_path else f'samples_{step}.png'
+        plt.savefig(plot_filename, bbox_inches='tight', dpi=300)
+        plt.show()  # Display the figure
+        plt.close(fig)  # Close the figure after showing it
+
+    else:
+        raise ValueError("Samples must be 2D or 3D for plotting.")
 
 def main():
     parser = argparse.ArgumentParser(description='Run Langevin MCMC to generate samples and optional outputs.')
@@ -242,10 +364,15 @@ def main():
 
     generation_fn = get_generation_fn(args)
     samples = generation_fn().numpy()
-    #plot_samples(samples, step=-1)
 
+    # Save the data if required
     if args.save_data:
         save_data(samples, args.save_dir, args.dataset)
 
+    # Plot and save samples with high quality
+    #plot_and_save_samples(samples, save_path=f'{args.dataset}.png')
+
 if __name__ == "__main__":
     main()
+
+

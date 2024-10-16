@@ -324,6 +324,7 @@ def generate_and_plot_ND_samples(phi, psi, num_samples, device, writer, epoch):
 
 def check_manifold_properties_ND_distributions(phi, psi, writer, epoch, device, val_loader, range_vals=[[-1.5, 1.5], [-1.5, 1.5], [-1.5, 1.5]], special_points=[[1., 0., 0.], [0., 0.33, 0.]]):
     # Generate and plot samples
+    
     num_samples = 512
     generate_and_plot_ND_samples(phi, psi, num_samples, device, writer, epoch)
 
@@ -355,6 +356,7 @@ def check_manifold_properties_ND_distributions(phi, psi, writer, epoch, device, 
 
     # Log diagonal values of psi for comparison
     log_diagonal_values(psi, writer, epoch)
+    
 
     # ---- Include the RAE functionality ----
     # Initialize the distribution and manifold
@@ -362,7 +364,7 @@ def check_manifold_properties_ND_distributions(phi, psi, writer, epoch, device, 
     manifold = DeformedGaussianPullbackManifold(distribution)
 
     # Initialize the Riemannian Autoencoder
-    epsilon = 0.1
+    epsilon = 0.05
     rae = DeformedGaussianRiemannianAutoencoder(manifold, epsilon)
 
     # Log RAE parameters
@@ -383,5 +385,6 @@ def check_manifold_properties_ND_distributions(phi, psi, writer, epoch, device, 
     rec_errors = torch.cat(rec_errors)  # Combine all batch errors
     avg_rec_error = torch.mean(rec_errors)  # Compute mean
     writer.add_scalar("RAE/reconstruction_error", avg_rec_error.item(), epoch)
+    print(f'reconstruction error:{avg_rec_error.item()}')
 
     

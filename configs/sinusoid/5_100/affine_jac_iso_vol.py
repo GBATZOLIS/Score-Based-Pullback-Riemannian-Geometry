@@ -7,9 +7,9 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     # Logging settings
-    config.base_log_dir = "./results/sinusoid/2_3"
-    config.experiment = "iso_vol_square"
-    config.eval_log_frequency = 25
+    config.base_log_dir = "./results/sinusoid/5_100"
+    config.experiment = "affine_jacobian_iso_vol_weights_2.5_2.5"
+    config.eval_log_frequency = 20
 
     # Model settings
     ## Strongly convex function settings
@@ -25,26 +25,30 @@ def get_config():
     config.num_bins = 128
     config.apply_unconditional_transform = 0
     config.min_bin_width = 1e-3
-    config.num_flow_steps = 8
+    config.num_flow_steps = 16
     config.premultiplication_by_U = False # new flag for premultiplication by U.T
 
     # Training settings
-    config.epochs = 1000
-    config.patience_epochs = 50
+    config.epochs = 2000
+    config.patience_epochs = 200
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'
     config.std = 0. #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
     config.use_reg = True
     config.reg_factor = 1
+    config.lambda_iso = 2.5
+    config.lambda_vol = 2.5
+    config.lambda_hessian = 1
     config.reg_type = 'isometry+volume'
+    config.reg_iso_type = 'orthogonal-jacobian'
     config.use_cv = False
 
     # Data settings
     config.dataset_class = 'numpy_dataset'
-    config.dataset = 'sinusoid_2_3'
+    config.dataset = 'sinusoid_5_100'
     config.data_path = "./data"
-    config.d = 3
-    config.batch_size = 64
+    config.d = 100
+    config.batch_size = 128
     config.data_range = [-8, 8]
     
     # Device settings
@@ -55,7 +59,7 @@ def get_config():
     config.learning_rate = 3e-4
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = '/home/gb511/riemannian_geo/results/sinusoid/2_3/iso_vol_square/checkpoints/checkpoint_epoch_656_loss_1.988.pth'
+    config.checkpoint = None
     
     # Reproducibility
     config.seed = 12
