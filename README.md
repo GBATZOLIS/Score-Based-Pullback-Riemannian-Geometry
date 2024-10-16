@@ -24,7 +24,7 @@ Welcome to the code repository for our paper **"Score-Based Pullback Riemannian 
 In our paper, we propose a novel method for learning suitable pullback Riemannian geometries by adapting normalizing flows (NFs). We introduce two key modifications to the standard NF training paradigm:
 
 1. **Anisotropic Base Distribution**: Parameterizing the diagonal elements of the covariance matrix to introduce anisotropy.
-2. **\(\ell^2\)-Isometry Regularization**: Regularizing the flow to be approximately \(\ell^2\)-isometric.
+2. **\(\ell^2\) Isometry Regularization**: Regularizing the flow to be approximately \(\ell^2\)-isometric.
 
 We evaluate our method through two sets of experiments:
 
