@@ -10,19 +10,6 @@ We show that this geometry can naturally be extracted by adapting the normalizin
 
 ---
 
-
-## Table of Contents
-
-- [Introduction](#introduction)
-- [Dependencies](#dependencies)
-- [Datasets](#datasets)
-- [Training and Evaluating Models](#training-and-evaluating-models)
-- [Reproducing Experiments](#reproducing-experiments)
-- [Code Structure](#code-structure)
-- [Citation](#citation)
-
----
-
 ## Introduction
 
 In our paper, we propose a novel method for learning suitable pullback Riemannian geometries by adapting normalizing flows (NFs). We introduce two key modifications to the standard NF training paradigm:
