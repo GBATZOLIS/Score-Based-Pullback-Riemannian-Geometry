@@ -14,7 +14,6 @@ We show that this geometry can naturally be extracted by adapting the normalizin
 ## Table of Contents
 
 - [Introduction](#introduction)
-- [Repository Structure](#repository-structure)
 - [Dependencies](#dependencies)
 - [Datasets](#datasets)
 - [Training and Evaluating Models](#training-and-evaluating-models)
