@@ -16,7 +16,7 @@ from torch.autograd.functional import jvp
 from src.data import get_dataset
 
 # Set which GPUs are visible
-set_visible_gpus('3')
+set_visible_gpus('1')
 
 def main(config_path):
     config = load_config(config_path)

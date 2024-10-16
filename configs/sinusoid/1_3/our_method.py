@@ -55,7 +55,7 @@ def get_config():
     config.learning_rate = 3e-4
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = None
+    config.checkpoint = '/home/gb511/riemannian_geo/results/sinusoid/1_3/iso_vol_square/checkpoints/checkpoint_epoch_665_loss_-1.801.pth'
     
     # Reproducibility
     config.seed = 12

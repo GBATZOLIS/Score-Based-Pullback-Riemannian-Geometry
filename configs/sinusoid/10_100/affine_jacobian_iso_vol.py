@@ -59,7 +59,7 @@ def get_config():
     config.learning_rate = 3e-4
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = None
+    config.checkpoint = '/home/gb511/riemannian_geo/results/sinusoid/10_100/affine_jacobian_iso_vol_weights_2_1/checkpoints/checkpoint_epoch_381_loss_63.918.pth'
     
     # Reproducibility
     config.seed = 12

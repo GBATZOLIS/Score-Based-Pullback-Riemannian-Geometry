@@ -8,7 +8,7 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/spiral"
-    config.experiment = "our_method_affine"
+    config.experiment = "our_method_jacobian_iso_deeper_model"
     config.eval_log_frequency = 50
 
     # Model settings
@@ -24,18 +24,22 @@ def get_config():
     config.num_bins = 128
     config.apply_unconditional_transform = 0
     config.min_bin_width = 1e-3
-    config.num_flow_steps = 4
+    config.num_flow_steps = 16
     config.premultiplication_by_U = False # new flag for premultiplication by U.T
 
     # Training settings
-    config.epochs = 4000
-    config.patience_epochs = 250
+    config.epochs = 2000
+    config.patience_epochs = 200
     config.checkpoint_frequency = 1
     config.loss = 'normalizing flow'
-    config.std = 0.1 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
+    config.std = 0. #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
     config.use_reg = True
-    config.reg_factor = 0.1
+    config.reg_factor = 1
+    config.lambda_iso = 0.2
+    config.lambda_vol = 1
+    config.lambda_hessian = 1
     config.reg_type = 'isometry'
+    config.reg_iso_type = 'orthogonal-jacobian'
     config.use_cv = False
 
     # Data settings
@@ -51,7 +55,7 @@ def get_config():
 
     # Optimization settings
     config.use_scheduler = True
-    config.learning_rate = 0.0005
+    config.learning_rate = 4e-4
 
     # Optional loading of model checkpoints for resuming
     config.checkpoint = None

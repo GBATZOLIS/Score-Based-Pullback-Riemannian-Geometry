@@ -7,7 +7,7 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     # Logging settings
-    config.base_log_dir = "./results/river"
+    config.base_log_dir = "./results/river/affine"
     config.experiment = "our_method"
     config.eval_log_frequency = 100
 
@@ -48,7 +48,7 @@ def get_config():
     config.data_range = [-15,15]
     
     # Device settings
-    config.device = "cuda" if torch.cuda.is_available() else "cpu"
+    config.device = "cpu" #"cuda" if torch.cuda.is_available() else "cpu"
 
     # Optimization settings
     config.use_scheduler = True
