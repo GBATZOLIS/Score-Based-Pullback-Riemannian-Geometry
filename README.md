@@ -1,103 +1,112 @@
 # Score-Based Pullback Riemannian Geometry
 
-This is the official implementation of the paper [Score-Based Pullback Riemannian Geometry](https://arxiv.org/abs/2410.01950) by Willem Diepeveen*, Georgios Batzolis*, Zakhar Shumaylov, Carola-Bibiane Schönlieb.
-
-In our work, we propose a score-based pullback Riemannian metric, giving **closed-form geodesics** and **interpretable autoencoding**, capturing the **intrinsic dimensionality** & **geometry** of data! 
-
-We show that this geometry can naturally be extracted by adapting the normalizing flow framework with **isometry regularization** and **base distribution anisotropy**.
+This repository contains the official implementation of the paper [Score-Based Pullback Riemannian Geometry](https://arxiv.org/abs/2410.01950) by Willem Diepeveen*, Georgios Batzolis*, Zakhar Shumaylov, and Carola-Bibiane Schönlieb.
 
 ![Approximate Data Manifolds Learned by the RAE](./rae.png)
 
----
-
 ## Introduction
 
-In our paper, we propose a novel method for learning suitable pullback Riemannian geometries by adapting normalizing flows (NFs). We introduce two key modifications to the standard NF training paradigm:
+In this work, we propose a novel method for learning suitable pullback Riemannian geometries by adapting normalizing flows (NFs). Our approach introduces two key modifications to the standard NF training paradigm:
 
 1. **Anisotropic Base Distribution**: Parameterizing the diagonal elements of the covariance matrix to introduce anisotropy.
 2. **\(l^2\)-Isometry Regularization**: Regularizing the flow to be approximately \(l^2\)-isometric.
 
-We evaluate our method through two sets of experiments:
+These innovations result in **closed-form geodesics** and **interpretable autoencoding**, capturing the **intrinsic dimensionality** and **geometry** of data. We evaluate our method through:
 
 - **Manifold Mapping Experiments**: Assessing the accuracy and stability of learned manifold mappings.
-- **Riemannian Autoencoder (RAE) Experiments**: Evaluating the capability of our method to generate robust RAEs.
+- **Riemannian Autoencoder (RAE) Experiments**: Demonstrating the capability of our method to generate robust RAEs.
 
 ---
 
-## Dependencies
+## Installation and Setup
 
-Run the following to create the conda environment and install necessary packages:
+### Dependencies
+
+Create the conda environment and install necessary packages:
 
 ```bash
 conda env create -f environment.yml
 conda activate id-diff
 ```
 
-Alternatively, you can install the required packages using `pip`:
+Alternatively, install the required packages using `pip`:
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
+### Datasets
 
-## Datasets
-
-The datasets need to be generated before training or evaluation. They will be saved in the `datasets/` folder.
-
-To generate the datasets, run:
+Generate the required datasets before training or evaluation. They will be saved in the `datasets/` folder.
 
 ```bash
 python sample_dataset.py --dataset dataset_name
 ```
 
-Where `dataset_name` can be `single_banana`, `squeezed_single_banana`, `river`, `sinusoid_K_N`, or `hemisphere_K_N`. For sinusoid and hemisphere, replace `K` with the manifold dimension and `N` with the ambient dimension.
+Replace `dataset_name` with one of the following:
+
+- `single_banana`
+- `squeezed_single_banana`
+- `river`
+- `sinusoid_K_N` (replace `K` with manifold dimension, `N` with ambient dimension)
+- `hemisphere_K_N` (replace `K` with manifold dimension, `N` with ambient dimension)
 
 ---
 
 ## Training and Evaluating Models
 
-To train or evaluate a model, use the respective script with the appropriate configuration file:
+To train or evaluate a model, run:
 
 ```bash
-python [train|eval].py --config path-to-config
+python train.py --config path-to-config
+```
+
+or
+
+```bash
+python eval.py --config path-to-config
 ```
 
 ---
 
 ## Reproducing Experiments
 
-All experiments in the paper can be reproduced using the provided configuration files.
+All experiments from the paper can be reproduced using the provided configuration files.
 
 ### Manifold Mapping Experiments
 
-- **Methods**: Our method, Standard Normalizing Flow (NF), Anisotropic NF, Isometric NF.
-- **Datasets**: Single Banana, Squeezed Single Banana, River.
-- **Config Files**: Located in `configs/single_banana/`, `configs/squeezed_single_banana/`, and `configs/river/`.
-  
+- **Methods**: Our method, Standard NF, Anisotropic NF, Isometric NF
+- **Datasets**: Single Banana, Squeezed Single Banana, River
+- **Config Files**:
+  - `configs/single_banana/`
+  - `configs/squeezed_single_banana/`
+  - `configs/river/`
+
 ### Riemannian Autoencoder Experiments
 
-- **Datasets**: Sinusoid, Hemisphere (varying intrinsic and ambient dimensions).
-- **Config Files**: Located in `configs/sinusoid/` and `configs/hemisphere/`.
+- **Datasets**: Sinusoid, Hemisphere (with varying intrinsic and ambient dimensions)
+- **Config Files**:
+  - `configs/sinusoid/`
+  - `configs/hemisphere/`
 
 ---
 
 ## Code Structure
 
-- `configs/`: Configuration files for training and evaluation.
+- `configs/`: Configuration files for training and evaluation
   - `single_banana/`, `squeezed_single_banana/`, `river/`, `sinusoid/`, `hemisphere/`
-- `src/`: Source code modules.
-  - `data/`: Data loading and dataset utilities.
-  - `diffeomorphisms/`: Implementation of diffeomorphisms (normalizing flows).
-  - `strongly_convex/`: Strongly convex functions (\(\psi\)).
-  - `manifolds/`: Manifold classes and pullback manifolds.
-  - `unimodal/`: Unimodal distribution classes constructed from \(\psi\) and \(\phi\).
-  - `riemannian_autoencoder/`: Implementation of the Riemannian autoencoder.
-  - `training/`: Training utilities and loss functions.
-  - `evaluation/`: Evaluation metrics and utilities.
-- `train.py`: Script to train models.
-- `eval.py`: Script to evaluate models.
-- `sample_dataset.py`: Script to generate synthetic datasets.
+- `src/`: Source code modules
+  - `data/`: Data loading and dataset utilities
+  - `diffeomorphisms/`: Implementation of diffeomorphisms (normalizing flows)
+  - `strongly_convex/`: Strongly convex functions (\(\psi\))
+  - `manifolds/`: Manifold classes and pullback manifolds
+  - `unimodal/`: Unimodal distribution classes constructed from \(\psi\) and \(\phi\)
+  - `riemannian_autoencoder/`: Implementation of the Riemannian autoencoder
+  - `training/`: Training utilities and loss functions
+  - `evaluation/`: Evaluation metrics and utilities
+- `train.py`: Script to train models
+- `eval.py`: Script to evaluate models
+- `sample_dataset.py`: Script to generate synthetic datasets
 
 ---
 
@@ -115,6 +124,8 @@ If you find this code useful in your research, please consider citing our paper:
 ```
 
 ---
+
+## Contact
 
 For any questions, feel free to contact us:
 
