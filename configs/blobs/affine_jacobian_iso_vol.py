@@ -79,7 +79,7 @@ def get_config():
     config.optimizer = 'AdamW'
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = None
+    config.checkpoint = 'checkpoint_last.pth'
 
     # Reproducibility
     config.seed = 23

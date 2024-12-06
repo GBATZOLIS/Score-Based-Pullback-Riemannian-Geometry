@@ -1,19 +1,24 @@
 import ml_collections
 import torch
 
+#THIS CONFIG WORKS!
 def get_config():
     config = ml_collections.ConfigDict()
 
     # Logging settings
     config.base_log_dir = "./results/mnist"
-    config.experiment = "rq_no_reg_sigma_0.15_deep"
-    config.eval_log_frequency = 10
+    config.experiment = "affine_iso_vol_hessian"
+    config.eval_log_frequency = 50
 
-    # Model settings
+    # Psi - strongly convex settings
+    config.strongly_convex_class = 'learnable_psi'
+    #config.use_softplus = True
+
+    # Phi Model settings
     config.diffeomorphism_class = 'image_diffeomorphism'
     config.actnorm = True
     config.alpha = 0.05
-    config.coupling_layer_type = 'rational_quadratic_spline'
+    config.coupling_layer_type = 'affine'
     config.hidden_channels = 96
     config.levels = 3
     config.multi_scale = False
@@ -30,18 +35,26 @@ def get_config():
         "min_bin_height": 0.001,
         "min_bin_width": 0.001,
         "min_derivative": 0.001,
-        "num_bins": 4,
-        "tail_bound": 3.0
+        "num_bins": 11,
+        "tail_bound": 10
     }
     config.dropout_prob = 0. #0.2
+    config.premultiplication_by_U = False # new flag for premultiplication by U.T
 
     # Training settings
-    config.epochs = 1000
+    config.epochs = 5000
+    config.patience_epochs = 300
     config.checkpoint_frequency = 1
-    config.std = 0.15 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
-    config.use_reg = False
+    config.loss = 'normalizing flow'
+    config.std = 0.06 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
+    config.use_reg = True
     config.reg_factor = 1
-    config.reg_type = 'isometry'
+    config.lambda_iso = 100
+    config.lambda_vol = 1 
+    config.lambda_hessian = 0.5
+    config.num_v = 2
+    config.reg_type = 'isometry+volume+hessian'
+    config.reg_iso_type = 'approximate-orthogonal-jacobian'
     config.use_cv = False
 
     # Data settings
@@ -63,8 +76,7 @@ def get_config():
     config.optimizer = 'AdamW'
 
     # Optional loading of model checkpoints for resuming
-    config.load_phi_checkpoint = None
-    config.load_psi_checkpoint = None
+    config.checkpoint = None
 
     # Reproducibility
     config.seed = 23

@@ -20,6 +20,7 @@ class LossFunctionWrapper:
         self.lambda_iso = config.get('lambda_iso', 5)
         self.lambda_vol = config.get('lambda_vol', 1)
         self.lambda_hessian = config.get('lambda_hessian', 1)
+        self.num_v = config.get('num_v', 8)
 
         self.reg_type = config.get('reg_type', 'volume')
         self.reg_iso_type = config.get('reg_iso_type', 'length')
@@ -46,7 +47,7 @@ class LossFunctionWrapper:
         elif self.loss_type == 'denoising score matching':
             return self.loss_fn(phi, psi, x, self.args_std, train, self.use_cv, self.use_reg, self.reg_factor, self.reg_type, device)
         elif self.loss_type == 'normalizing flow':
-            return self.loss_fn(phi, psi, x, train, self.use_reg, self.reg_factor, self.reg_type, self.reg_iso_type, self.lambda_iso, self.lambda_vol, self.lambda_hessian, device)
+            return self.loss_fn(phi, psi, x, train, self.use_reg, self.reg_factor, self.reg_type, self.reg_iso_type, self.lambda_iso, self.lambda_vol, self.lambda_hessian, self.num_v, device)
 
 
 def get_energy_fn(phi, psi):
@@ -118,7 +119,7 @@ def loglikelihood_maximisation(phi, psi, x, args_std, train=True, use_reg=False,
     
     return loss, density_learning_loss, reg_loss
 
-def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, reg_type='volume', reg_iso_type='length', lambda_iso=1.0, lambda_vol=1.0, lambda_hessian=1.0, device='cuda:0'):
+def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, reg_type='volume', reg_iso_type='length', lambda_iso=1.0, lambda_vol=1.0, lambda_hessian=1.0, num_v=8, device='cuda:0'):
     """
     Maximizes the log-likelihood with respect to the normalizing flow model.
     """
@@ -143,7 +144,7 @@ def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, 
 
     # Regularization term if applicable
     if use_reg:
-        iso_reg, volume_reg, hessian_reg = regularisation_term(reg_type, phi, x, train, device, reg_iso_type, logabsdetjacobian, z, psi)
+        iso_reg, volume_reg, hessian_reg = regularisation_term(reg_type, phi, x, train, device, reg_iso_type, logabsdetjacobian, z, psi, num_v)
         reg_loss = lambda_iso * iso_reg + lambda_vol * volume_reg + lambda_hessian * hessian_reg
     else:
         iso_reg = torch.tensor(0.0, device=device)

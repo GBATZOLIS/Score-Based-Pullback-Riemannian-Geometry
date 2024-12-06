@@ -3,9 +3,9 @@ import random
 import functorch
 import torch.func as func
 
-def regularisation_term(reg_type, phi, x, train, device, reg_iso_type='length', logabsdetjac=None, phi_x=None, psi=None):
+def regularisation_term(reg_type, phi, x, train, device, reg_iso_type='length', logabsdetjac=None, phi_x=None, psi=None, num_v=8):
     if reg_type == 'isometry':
-        iso_reg = isometry_regularisation(reg_iso_type, phi, x, train, device)
+        iso_reg = isometry_regularisation(reg_iso_type, phi, x, train, device, num_v)
         return iso_reg, torch.tensor(0.0, device=device), torch.tensor(0.0, device=device)
 
     elif reg_type == 'volume':
@@ -14,7 +14,7 @@ def regularisation_term(reg_type, phi, x, train, device, reg_iso_type='length', 
 
     elif reg_type in ['volume+isometry', 'isometry+volume']:
         # Isometry regularization
-        iso_reg = isometry_regularisation(reg_iso_type, phi, x, train, device)
+        iso_reg = isometry_regularisation(reg_iso_type, phi, x, train, device, num_v)
 
         # Volume regularization
         volume_reg = volume_regularisation(phi, x, logabsdetjac)
@@ -23,7 +23,7 @@ def regularisation_term(reg_type, phi, x, train, device, reg_iso_type='length', 
 
     elif reg_type == 'isometry+volume+hessian':
         # Isometry regularization
-        iso_reg = isometry_regularisation(reg_iso_type, phi, x, train, device)
+        iso_reg = isometry_regularisation(reg_iso_type, phi, x, train, device, num_v)
 
         # Volume regularization
         volume_reg = volume_regularisation(phi, x, logabsdetjac)
@@ -37,13 +37,12 @@ def regularisation_term(reg_type, phi, x, train, device, reg_iso_type='length', 
         raise ValueError(f"Unknown regularization type: {reg_type}")
 
 
-def isometry_regularisation(reg_iso_type, phi, x, train, device):
+def isometry_regularisation(reg_iso_type, phi, x, train, device, num_v=8):
     batch_size, *dims = x.shape
 
     if reg_iso_type == 'length':
         # Generate v for length regularisation
         #v = torch.randn(batch_size, *dims, device=device, requires_grad=True)
-        num_v = 4
         return length_regularisation(phi, x, num_v, train, device)
     
     elif reg_iso_type == 'angle':
@@ -64,7 +63,6 @@ def isometry_regularisation(reg_iso_type, phi, x, train, device):
     
     elif reg_iso_type == 'approximate-orthogonal-jacobian':
         # Enforce orthogonality of the Jacobian using the approximate method
-        num_v = 8  
         return approximate_orthogonal_jacobian_regularisation(phi, x, num_v, train, device)
     
     else:
@@ -76,7 +74,7 @@ def approximate_orthogonal_jacobian_regularisation(phi, x, num_v, train, device)
     input_dim = x[0].numel()  # Total number of input dimensions after batch dimension
 
     # Flatten x to (batch_size, input_dim)
-    x_flat = x.view(batch_size, -1).requires_grad_(True)
+    #x_flat = x.view(batch_size, -1).requires_grad_(True)
 
     # Generate orthonormal vectors per batch sample using batched QR decomposition
     # Create a random matrix of shape (batch_size, input_dim, num_v)
@@ -273,47 +271,51 @@ def hessian_regularisation(phi, x, phi_x, psi, train):
     
     Args:
         phi (callable): The flow transformation function.
-        x (torch.Tensor): Input tensor.
-        phi_x (torch.Tensor): Precomputed transformation φ(x).
+        x (torch.Tensor): Input tensor with image shape (batch_size, channels, height, width).
+        phi_x (torch.Tensor): Flattened output of φ(x) with shape (batch_size, flattened_dim).
         psi (torch.Tensor): The diagonal covariance matrix parameters.
+        train (bool): Whether the model is in training mode.
 
     Returns:
         torch.Tensor: L2 norm of the Hessian-vector product for the sampled dimension.
     """
-    
-    # Dimensionality of the input
-    d = x.shape[-1]  
-    
+    # Flatten x to match the shape of phi_x
+    batch_size = x.size(0)
+    x_flat = x.view(batch_size, -1)  # Shape: (batch_size, flattened_dim)
+
+    # Dimensionality of the flattened input
+    d_flat = x_flat.size(1)
+
     # Randomly sample one dimension
-    j = random.randint(0, d-1)
+    j = random.randint(0, d_flat - 1)
 
     # Inverse of the diagonal covariance matrix Σ^{-1}
     sigma_inv = 1.0 / psi.diagonal.detach()  # Assuming psi.diagonal provides the diagonal elements
-    
-    # Reshape sigma_inv to be broadcastable with phi_x
-    v = phi_x * sigma_inv.unsqueeze(0)  # Shape: (batch_size, d)
+    sigma_inv = sigma_inv.unsqueeze(0)  # Shape: (1, flattened_dim) for broadcasting
 
-    # Compute the Hessian-vector product for the sampled dimension
-    def scalar_phi_component_batch(i, x):
-        return phi(x)[:, i].sum()  # Return the i-th component for the entire batch
+    # Create v aligned with x_flat
+    v = phi_x * sigma_inv  # Shape: (batch_size, flattened_dim)
 
-    #check gradient requirements
-    #print(f'x.requires_grad:{x.requires_grad}')
-    #print(f'v.requires_grad:{v.requires_grad}')
+    # Define scalar_phi_component_batch for the j-th dimension
+    def scalar_phi_component_batch(i, x_flat):
+        # Reshape x_flat back to image shape for φ if needed
+        x_image = x_flat.view_as(x)
+        return phi(x_image)[:, i].sum()  # Use φ(x)[:, i] for the batch
 
     if not train:
         torch.set_grad_enabled(True)
 
-    _, hvp_j_batch = torch.autograd.functional.hvp(lambda x: scalar_phi_component_batch(j, x), x, v, create_graph=True)
-    
-    #print("hvp_j_batch.requires_grad:", hvp_j_batch.requires_grad)
+    # Compute Hessian-vector product
+    _, hvp_j_batch = torch.autograd.functional.hvp(
+        lambda x_flat: scalar_phi_component_batch(j, x_flat), x_flat, v, create_graph=True
+    )
 
     if not train:
         torch.set_grad_enabled(False)
-    
 
     # Return the L2 norm (2-norm) of the Hessian-vector product
     hessian_reg = torch.norm(hvp_j_batch, p=2)
-    
+
     return hessian_reg
+
 

@@ -7,7 +7,7 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/blobs"
-    config.experiment = "affine_jvp_iso_vol_weights_2_1_num_v_8_debug"
+    config.experiment = "affine_jvp_iso_vol_weights_4_1_num_v_8"
     config.eval_log_frequency = 20
 
     # Psi - strongly convex settings
@@ -49,8 +49,8 @@ def get_config():
     config.std = 0.02 #the chosen std is critical and it depends on the dataset. We should create a rigorous method that estimates the optimal std.
     config.use_reg = True
     config.reg_factor = 1
-    config.lambda_iso = 2 #2*6
-    config.lambda_vol = 1 #1*100
+    config.lambda_iso = 4
+    config.lambda_vol = 1
     config.lambda_hessian = 1
     config.num_v = 8
     config.reg_type = 'isometry+volume'
@@ -80,7 +80,7 @@ def get_config():
     config.optimizer = 'AdamW'
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = 'checkpoint_last'
+    config.checkpoint = None
 
     # Reproducibility
     config.seed = 23
