@@ -8,7 +8,7 @@ def get_config():
 
     # Logging settings
     config.base_log_dir = "./results/sinusoid/2_3"
-    config.experiment = "iso_vol_square"
+    config.experiment = "TRIAL"
     config.eval_log_frequency = 25
 
     # Model settings
@@ -55,7 +55,7 @@ def get_config():
     config.learning_rate = 3e-4
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = '/home/gb511/riemannian_geo/results/sinusoid/2_3/iso_vol_square/checkpoints/checkpoint_epoch_656_loss_1.988.pth'
+    config.checkpoint = None #'/home/gb511/riemannian_geo/results/sinusoid/2_3/iso_vol_square/checkpoints/checkpoint_epoch_656_loss_1.988.pth'
     
     # Reproducibility
     config.seed = 12
