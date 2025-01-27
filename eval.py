@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Set which GPUs are visible
-set_visible_gpus('2')
+set_visible_gpus('1')
 
 def main(config_path):
     config = load_config(config_path)
@@ -74,7 +74,13 @@ def main(config_path):
     phi = phi.to(device)
     psi = psi.to(device)
     
-    rae_projection(psi, phi, tensorboard_dir, device, train_loader)
+    #save only the diagonal values of psi -> the learned variances
+    corresponding_variances = psi.diagonal.detach().cpu().numpy()
+    variances_file = os.path.join(tensorboard_dir, "variances.npy")
+    np.save(variances_file, corresponding_variances)
+    print(f"Saved corresponding variances to {variances_file}")
+
+    #rae_projection(psi, phi, tensorboard_dir, device, train_loader)
     #rae_evaluation(psi, phi, test_loader, tensorboard_dir, device)
 
     #compute geodesic error and the geodesic variation error

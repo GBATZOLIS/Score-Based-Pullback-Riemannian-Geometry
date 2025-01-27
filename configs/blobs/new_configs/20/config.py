@@ -6,9 +6,9 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     # Logging settings
-    config.base_log_dir = "./results/blobs/10"
-    config.experiment = "affine_jvp_iso_vol_hessian_very_strong_iso_reg"
-    config.eval_log_frequency = 20
+    config.base_log_dir = "./results/blobs/20"
+    config.experiment = "affine_jvp_iso_vol_hessian"
+    config.eval_log_frequency = 10
 
     # Psi - strongly convex settings
     config.strongly_convex_class = 'learnable_psi'
@@ -61,9 +61,9 @@ def get_config():
     config.dataset_class = 'fixed_gaussians_manifold'  # Matches the class name
     config.dataset = 'blobs'
     config.data_path = "./data"  # Placeholder for data path (not used in synthetic data)
-    config.num_gaussians = 10  # Number of Gaussians per image
+    config.num_gaussians = 20  # Number of Gaussians per image
     config.std_range = [1, 5]  # Standard deviation range for Gaussians
-    config.data_samples = 50000 #50000 # Number of samples in the dataset
+    config.data_samples = 300 #100000 #100000 # Number of samples in the dataset
     config.image_size = 32  # Image dimensions (32x32)
     config.split = [0.8, 0.1, 0.1]  # Train/val/test split ratios
     config.c = 1  # Number of channels (grayscale)
@@ -80,7 +80,7 @@ def get_config():
     config.optimizer = 'AdamW'
 
     # Optional loading of model checkpoints for resuming
-    config.checkpoint = None
+    config.checkpoint = 'checkpoint_epoch_180_loss_-7616.187.pth'
 
     # Reproducibility
     config.seed = 23
