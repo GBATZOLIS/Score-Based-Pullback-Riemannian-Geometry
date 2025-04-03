@@ -149,6 +149,7 @@ def normalizing_flow_loss(phi, psi, x, train=True, use_reg=False, reg_factor=1, 
     else:
         iso_reg = torch.tensor(0.0, device=device)
         volume_reg = torch.tensor(0.0, device=device)
+        hessian_reg = torch.tensor(0.0, device=device)
         reg_loss = torch.tensor(0.0, device=device)
 
     # Total loss
