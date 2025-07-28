@@ -2,6 +2,8 @@
 
 This repository contains the official implementation of the paper [Score-Based Pullback Riemannian Geometry](https://arxiv.org/abs/2410.01950) by Willem Diepeveen*, Georgios Batzolis*, Zakhar Shumaylov, and Carola-Bibiane Schönlieb.
 
+> ⚠️ **Note**: The code for the *image experiments* is currently available in the [`image-update`](https://github.com/GBATZOLIS/Score-Based-Pullback-Riemannian-Geometry/tree/image-update) branch and will be merged into `main` soon.
+
 ![Approximate Data Manifolds Learned by the RAE](./rae.png)
 
 ## Introduction
